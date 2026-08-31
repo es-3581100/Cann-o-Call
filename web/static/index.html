@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flatten Workspace Studio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: #0b1020;
+      color: #e6e9f0;
+    }
+
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #26304f;
+    }
+
+    main {
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      background: #0f1530;
+      color: #e6e9f0;
+      border: 1px solid #2c3a63;
+      border-radius: 8px;
+      padding: 12px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+
+    button,
+    input[type="file"] {
+      background: #17224a;
+      color: #e6e9f0;
+      border: 1px solid #3b4c7c;
+      border-radius: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d2b5c;
+    }
+
+    .panel {
+      border: 1px solid #26304f;
+      border-radius: 12px;
+      padding: 16px;
+      background: #0f1530;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 16px;
+    }
+
+    #tree {
+      overflow: auto;
+      max-height: 70vh;
+    }
+
+    #fileViewer {
+      white-space: pre-wrap;
+      overflow: auto;
+      max-height: 70vh;
+      background: #0a0f1f;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #2c3a63;
+      margin: 0;
+    }
+
+    ul {
+      list-style: none;
+      padding-left: 16px;
+      margin: 0;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    .dir {
+      cursor: pointer;
+      color: #8fb7ff;
+    }
+
+    .file {
+      cursor: pointer;
+      color: #d5e0ff;
+    }
+
+    .meta {
+      display: grid;
+      gap: 8px;
+    }
+
+    .bad {
+      color: #ff9f9f;
+    }
+
+    .good {
+      color: #98f5c2;
+    }
+
+    code {
+      background: #101836;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+
+    .toolbar {
+      margin: 12px 0;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Flatten Workspace Studio</h1>
+    <p>
+      Go fullstack viewer and validator for
+      <code>flatten-workspace/v1</code> / <code>zip-structure</code> envelopes.
+    </p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Load envelope</h2>
+      <p>
+        Paste YAML/JSON or choose a file. The server validates paths, SHA-256 hashes,
+        sizes, manifest consistency, and quarantine entries.
+      </p>
+
+      <input id="fileInput" type="file" accept=".yaml,.yml,.json,.txt">
+      <br><br>
+
+      <textarea id="payload" placeholder="format: flatten-workspace/v1
+mode: zip-structure
+source: ...
+tree: ..."></textarea>
+
+      <br><br>
+
+      <button id="loadBtn">Load workspace</button>
+      <div id="loadError" class="bad"></div>
+    </section>
+
+    <section id="workspacePanel" class="panel" hidden>
+      <h2>Workspace</h2>
+
+      <div id="summary" class="meta"></div>
+
+      <div class="toolbar">
+        <button id="downloadZipBtn">Download materialized ZIP</button>
+        <button id="refreshBtn">Refresh</button>
+      </div>
+
+      <div class="split">
+        <div>
+          <h3>Tree</h3>
+          <div id="tree"></div>
+        </div>
+
+        <div>
+          <h3>File</h3>
+          <pre id="fileViewer">Select a file.</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Existing workspaces</h2>
+      <button id="refreshListBtn">Refresh list</button>
+      <div id="list"></div>
+    </section>
+  </main>
+
+  <script>
+    let currentId = null;
+
+    const el = (id) => document.getElementById(id);
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, options);
+      const text = await res.text();
+
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (err) {
+        throw new Error(text || res.statusText);
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || text || res.statusText);
+      }
+
+      return data;
+    }
+
+    function renderSummary(summary) {
+      const issues = summary.issues || [];
+      const div = el("summary");
+      div.innerHTML = "";
+
+      const rows = [
+        ["ID", summary.id],
+        ["Format", summary.format],
+        ["Mode", summary.mode],
+        ["Source", summary.source?.name],
+        ["Source SHA-256", summary.source?.sha256],
+        ["Files", summary.file_count],
+        ["Directories", summary.directory_count],
+        ["Manifest checked", String(summary.manifest_checked)],
+        ["Created", summary.created_at],
+      ];
+
+      for (const [k, v] of rows) {
+        const row = document.createElement("div");
+        const b = document.createElement("strong");
+        b.textContent = k + ": ";
+        row.appendChild(b);
+        row.appendChild(document.createTextNode(v ?? ""));
+        div.appendChild(row);
+      }
+
+      const issueBox = document.createElement("div");
+      if (issues.length) {
+        issueBox.className = "bad";
+        issueBox.textContent = "Issues: " + issues.join("; ");
+      } else {
+        issueBox.className = "good";
+        issueBox.textContent = "No validation issues.";
+      }
+
+      div.appendChild(issueBox);
+    }
+
+    function renderTree(nodes, container) {
+      container.innerHTML = "";
+
+      const ul = document.createElement("ul");
+
+      for (const node of nodes) {
+        const li = document.createElement("li");
+        const label = document.createElement("span");
+
+        if (node.type === "directory") {
+          label.className = "dir";
+          label.textContent = "📁 " + node.name;
+
+          const child = document.createElement("div");
+          child.hidden = true;
+
+          label.onclick = () => {
+            child.hidden = !child.hidden;
+          };
+
+          li.appendChild(label);
+          li.appendChild(child);
+
+          renderTree(node.children || [], child);
+        } else {
+          label.className = "file";
+          label.textContent = "📄 " + node.name + " (" + node.size + " bytes)";
+          label.onclick = () => viewFile(node.path);
+          li.appendChild(label);
+        }
+
+        ul.appendChild(li);
+      }
+
+      container.appendChild(ul);
+    }
+
+    async function loadWorkspaceFromText(text) {
+      el("loadError").textContent = "";
+
+      try {
+        const summary = await api("/api/workspaces", {
+          method: "POST",
+          body: text,
+        });
+
+        currentId = summary.id;
+
+        el("workspacePanel").hidden = false;
+        renderSummary(summary);
+
+        await refreshTree();
+        await refreshList();
+      } catch (err) {
+        el("loadError").textContent = err.message;
+      }
+    }
+
+    async function refreshTree() {
+      if (!currentId) return;
+
+      const nodes = await api(`/api/workspaces/${encodeURIComponent(currentId)}/tree`);
+      renderTree(nodes, el("tree"));
+    }
+
+    async function viewFile(path) {
+      try {
+        const file = await api(
+          `/api/workspaces/${encodeURIComponent(currentId)}/file?path=${encodeURIComponent(path)}`
+        );
+
+        const header = [
+          `path: ${file.path}`,
+          `sha256: ${file.sha256}`,
+          `declared_sha256: ${file.declared_sha256 || ""}`,
+          `encoding: ${file.content_encoding}`,
+          `verified: ${file.verified}`,
+          "",
+          "",
+        ].join("\n");
+
+        el("fileViewer").textContent = header + file.content;
+      } catch (err) {
+        el("fileViewer").textContent = "Error: " + err.message;
+      }
+    }
+
+    async function refreshList() {
+      const items = await api("/api/workspaces");
+      const div = el("list");
+      div.innerHTML = "";
+
+      if (!items.length) {
+        div.textContent = "No workspaces loaded.";
+        return;
+      }
+
+      for (const item of items) {
+        const row = document.createElement("div");
+        row.className = "meta";
+
+        const btn = document.createElement("button");
+        btn.textContent = `Open ${item.id.slice(0, 12)} (${item.file_count} files)`;
+
+        btn.onclick = async () => {
+          currentId = item.id;
+
+          const summary = await api(`/api/workspaces/${encodeURIComponent(currentId)}`);
+
+          el("workspacePanel").hidden = false;
+          renderSummary(summary);
+
+          await refreshTree();
+        };
+
+        row.appendChild(btn);
+        div.appendChild(row);
+      }
+    }
+
+    el("loadBtn").onclick = async () => {
+      const file = el("fileInput").files?.[0];
+
+      if (file) {
+        loadWorkspaceFromText(await file.text());
+      } else {
+        loadWorkspaceFromText(el("payload").value);
+      }
+    };
+
+    el("refreshBtn").onclick = async () => {
+      const summary = await api(`/api/workspaces/${encodeURIComponent(currentId)}`);
+      renderSummary(summary);
+      await refreshTree();
+    };
+
+    el("downloadZipBtn").onclick = () => {
+      if (!currentId) return;
+      window.location = `/api/workspaces/${encodeURIComponent(currentId)}/zip`;
+    };
+
+    el("refreshListBtn").onclick = refreshList;
+
+    refreshList();
+  </script>
+</body>
+</html>

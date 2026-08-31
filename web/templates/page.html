@@ -1,0 +1,596 @@
+{{define "page"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flatten Workspace Studio</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: #0b1020;
+      color: #e6e9f0;
+    }
+
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #26304f;
+    }
+
+    main {
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel {
+      border: 1px solid #26304f;
+      border-radius: 12px;
+      padding: 16px;
+      background: #0f1530;
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="file"] {
+      width: 100%;
+      box-sizing: border-box;
+      background: #0a0f1f;
+      color: #e6e9f0;
+      border: 1px solid #2c3a63;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: inherit;
+    }
+
+    textarea {
+      min-height: 120px;
+    }
+
+    button {
+      background: #17224a;
+      color: #e6e9f0;
+      border: 1px solid #3b4c7c;
+      border-radius: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d2b5c;
+    }
+
+    ul {
+      list-style: none;
+      padding-left: 16px;
+      margin: 0;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    details {
+      margin-left: 8px;
+    }
+
+    summary {
+      cursor: pointer;
+      color: #8fb7ff;
+    }
+
+    .file {
+      cursor: pointer;
+      color: #d5e0ff;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow: auto;
+      background: #0a0f1f;
+      border: 1px solid #2c3a63;
+      border-radius: 8px;
+      padding: 12px;
+      max-height: 60vh;
+    }
+
+    .error {
+      color: #ff9f9f;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .row {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .workspace-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Flatten Workspace Studio</h1>
+    <p>
+      HTMX control surface for <code>flatten-workspace/v1</code>, build-ledger mutations, receipts and checkpoints.
+    </p>
+  </header>
+
+  <main>
+    {{if .Error}}
+      <div class="panel error">{{.Error}}</div>
+    {{end}}
+
+    <div class="panel">
+      <h2>Import ZIP</h2>
+
+      <form
+        hx-post="/ui/workspaces/from-zip"
+        hx-target="#workspace"
+        hx-swap="innerHTML"
+        hx-encoding="multipart/form-data"
+      >
+        <div class="row">
+          <input type="file" name="file" accept=".zip">
+        </div>
+
+        <button>Upload ZIP</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Import Envelope</h2>
+      <form hx-post="/ui/workspaces/from-envelope" hx-target="#workspace" hx-swap="innerHTML">
+        <div class="row">
+          <textarea name="envelope" placeholder="Paste flatten-workspace/v1 JSON or YAML envelope"></textarea>
+        </div>
+        <button>Import envelope</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Global verification</h2>
+      <button hx-get="/ui/ledger/verify" hx-target="#global-result" hx-swap="innerHTML">Verify event hash chain</button>
+      <button hx-get="/ui/receipts/verify" hx-target="#global-result" hx-swap="innerHTML">Verify receipt hash chain</button>
+      <div id="global-result"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Snapshot verification</h2>
+      <form hx-post="/ui/snapshots/verify" hx-target="#global-result" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+        <input type="file" name="file" accept=".zip">
+        <button>Verify snapshot</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Workspaces</h2>
+
+      <div class="workspace-list">
+        {{range .Workspaces}}
+          <button
+            hx-get="/ui/workspaces/{{.ID}}"
+            hx-target="#workspace"
+            hx-swap="innerHTML"
+          >
+            {{.ID}}
+          </button>
+        {{else}}
+          No workspaces loaded.
+        {{end}}
+      </div>
+    </div>
+
+    <div id="workspace">
+      {{template "workspace" .}}
+    </div>
+  </main>
+</body>
+</html>
+{{end}}
+
+{{define "workspace"}}
+  {{if .Workspace}}
+    <div class="panel">
+      <h2>Workspace</h2>
+
+      <div class="grid">
+        <div>ID: {{.Workspace.ID}}</div>
+        <div>Format: {{.Workspace.Format}}</div>
+        <div>Mode: {{.Workspace.Mode}}</div>
+        <div>Files: {{.Workspace.FileCount}}</div>
+        <div>Directories: {{.Workspace.DirectoryCount}}</div>
+        <div>Manifest checked: {{.Workspace.ManifestChecked}}</div>
+        <div>Created: {{.Workspace.CreatedAt}}</div>
+        <div>Quarantined: {{len .Workspace.Quarantined}}</div>
+        {{if .Binding}}
+          <div>Bound root: {{.Binding.ProjectRoot}} ({{.Binding.Status}})</div>
+        {{else}}
+          <div>Bound root: not bound</div>
+        {{end}}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Materialize</h2>
+
+      <form
+        hx-post="/ui/workspaces/{{.Workspace.ID}}/materialize"
+        hx-target="#result"
+        hx-swap="innerHTML"
+      >
+        <div class="row">
+          <input type="text" name="authority_token" placeholder="Authority token">
+        </div>
+
+        <div class="row">
+          <input type="text" name="root" placeholder="materialization root">
+        </div>
+
+        <div class="row">
+          <label>
+            <input type="checkbox" name="confirm" value="true">
+            confirm materialization
+          </label>
+        </div>
+
+        <button>Materialize</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Bind project root</h2>
+      <form hx-post="/ui/workspaces/{{.Workspace.ID}}/bind" hx-target="#workspace" hx-swap="innerHTML">
+        <div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div>
+        <div class="row"><input type="text" name="project_root" placeholder="/absolute/path/to/project-root"></div>
+        <label><input type="checkbox" name="confirm" value="true"> confirm binding</label>
+        <label><input type="checkbox" name="verify_files" value="true"> verify workspace files</label>
+        <label><input type="checkbox" name="force" value="true"> force despite warnings</label>
+        <button>Bind workspace</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Replay / runtime</h2>
+      <button hx-get="/ui/workspaces/{{.Workspace.ID}}/replay/verify" hx-target="#result" hx-swap="innerHTML">Verify replay</button>
+      <button hx-get="/ui/workspaces/{{.Workspace.ID}}/quarantine" hx-target="#result" hx-swap="innerHTML">Inspect quarantine</button>
+      <button hx-get="/ui/workspaces/{{.Workspace.ID}}/actors" hx-target="#result" hx-swap="innerHTML">Actor activations</button>
+    </div>
+
+    <div class="panel">
+      <h2>Export</h2>
+      <a class="button" href="/api/workspaces/{{.Workspace.ID}}/snapshot" download>Download snapshot</a>
+      <a class="button" href="/api/workspaces/{{.Workspace.ID}}/verification-report?format=json&download=true" download>Verification report JSON</a>
+      <a class="button" href="/api/workspaces/{{.Workspace.ID}}/verification-report?format=yaml&download=true" download>Verification report YAML</a>
+    </div>
+
+    <div class="panel">
+      <h2>Build Ledger</h2>
+
+      <details open>
+        <summary>Append event</summary>
+
+        <form
+          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/event"
+          hx-target="#result"
+          hx-swap="innerHTML"
+        >
+          <div class="row">
+            <input type="text" name="authority_token" placeholder="Authority token">
+          </div>
+
+          <div class="row">
+            <textarea name="event_json" placeholder='{"event":"manual_note","status":"recorded"}'></textarea>
+          </div>
+
+          <button>Append event</button>
+        </form>
+      </details>
+
+      <details>
+        <summary>Update current state</summary>
+
+        <form
+          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/state"
+          hx-target="#result"
+          hx-swap="innerHTML"
+        >
+          <div class="row">
+            <input type="text" name="authority_token" placeholder="Authority token">
+          </div>
+
+          <div class="row">
+            <textarea name="state_yaml" placeholder="status: in_progress"></textarea>
+          </div>
+
+          <button>Update state</button>
+        </form>
+      </details>
+
+      <details>
+        <summary>Create run</summary>
+
+        <form
+          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/run"
+          hx-target="#result"
+          hx-swap="innerHTML"
+        >
+          <div class="row">
+            <input type="text" name="authority_token" placeholder="Authority token">
+          </div>
+
+          <div class="row">
+            <textarea name="document_yaml" placeholder="id: run-example-0001
+type: run
+status: in_progress"></textarea>
+          </div>
+
+          <button>Create run</button>
+        </form>
+      </details>
+
+      <details>
+        <summary>Create receipt</summary>
+
+        <form
+          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/receipt"
+          hx-target="#result"
+          hx-swap="innerHTML"
+        >
+          <div class="row">
+            <input type="text" name="authority_token" placeholder="Authority token">
+          </div>
+
+          <div class="row">
+            <textarea name="document_yaml" placeholder="id: receipt-example-0001
+type: receipt
+status: delivered"></textarea>
+          </div>
+
+          <button>Create receipt</button>
+        </form>
+      </details>
+
+      <details>
+        <summary>Create verification</summary>
+
+        <form
+          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/verification"
+          hx-target="#result"
+          hx-swap="innerHTML"
+        >
+          <div class="row">
+            <input type="text" name="authority_token" placeholder="Authority token">
+          </div>
+
+          <div class="row">
+            <textarea name="document_yaml" placeholder="id: verification-example-0001
+type: verification
+status: verified"></textarea>
+          </div>
+
+          <button>Create verification</button>
+        </form>
+      </details>
+    </div>
+
+    <div id="result" class="panel">
+      {{template "result" .}}
+    </div>
+
+    <div class="panel">
+      <h2>Tree</h2>
+      {{template "tree" .Tree}}
+    </div>
+
+    <div class="panel">
+      <h2>File</h2>
+
+      <div id="fileViewer">
+        {{if .File}}
+          {{template "file" .File}}
+        {{else}}
+          Select a file.
+        {{end}}
+      </div>
+    </div>
+  {{else}}
+    <div class="panel">
+      No workspace loaded.
+    </div>
+  {{end}}
+{{end}}
+
+{{define "result"}}
+  {{if .Error}}
+    <pre class="error">{{.Error}}</pre>
+  {{else if .Result}}
+    <pre>{{.Result}}</pre>
+    {{if .ReceiptID}}
+      <button hx-get="/ui/receipts/{{.ReceiptID}}/diff" hx-target="#result" hx-swap="innerHTML">View diff</button>
+    {{end}}
+  {{else}}
+    <pre>No result yet.</pre>
+  {{end}}
+{{end}}
+
+{{define "tree"}}
+  <ul>
+    {{range .}}
+      <li>
+        {{if eq .Type "directory"}}
+          <details>
+            <summary>📁 {{.Name}}</summary>
+            {{template "tree" .Children}}
+          </details>
+        {{else}}
+          <span
+            class="file"
+            hx-get="/ui/file?workspace={{.WorkspaceID}}&path={{urlquery .Path}}"
+            hx-target="#fileViewer"
+            hx-swap="innerHTML"
+          >
+            📄 {{.Name}} ({{.Size}} bytes)
+          </span>
+        {{end}}
+      </li>
+    {{end}}
+  </ul>
+{{end}}
+
+{{define "file"}}
+  <div>
+    <div>Path: {{.Path}}</div>
+    <div>SHA-256: {{.SHA256}}</div>
+    <div>Encoding: {{.Encoding}}</div>
+    <div>Language: {{.Language}}</div>
+    <div>Verified: {{.Verified}}</div>
+  </div>
+
+  <pre>{{.Content}}</pre>
+{{end}}
+{{define "quarantine"}}
+  <div>
+    <div>Workspace: {{.WorkspaceID}}</div>
+    <div>Quarantined entries: {{.Count}}</div>
+    <div>Unsafe entry count: {{.UnsafeEntryCount}}</div>
+  </div>
+
+  <h3>Entries</h3>
+
+  <ul>
+    {{range .Items}}
+      <li>{{.}}</li>
+    {{else}}
+      <li>No quarantined entries.</li>
+    {{end}}
+  </ul>
+
+  {{if .Blobs}}
+    <h3>Quarantined blobs</h3>
+
+    <ul>
+      {{range .Blobs}}
+        <li>
+          <div><strong>{{.OriginalPath}}</strong></div>
+          <div>Status: {{.Status}}</div>
+          <div>Safe path: {{.SafePath}}</div>
+          <div>SHA-256: {{.SHA256}}</div>
+          <div>Size: {{.Size}}</div>
+
+          {{if eq .Status "quarantined"}}
+            <form
+              hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/admit"
+              hx-target="#result"
+              hx-swap="innerHTML"
+            >
+              <div class="row">
+                <input type="text" name="authority_token" placeholder="Authority token">
+              </div>
+
+              <div class="row">
+                <input type="text" name="target_path" value="{{.SafePath}}">
+              </div>
+
+              <button>Admit</button>
+            </form>
+
+            <form
+              hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/reject"
+              hx-target="#result"
+              hx-swap="innerHTML"
+            >
+              <div class="row">
+                <input type="text" name="authority_token" placeholder="Authority token">
+              </div>
+
+              <div class="row">
+                <input type="text" name="reason" placeholder="reason">
+              </div>
+
+              <button>Reject</button>
+            </form>
+          {{end}}
+        </li>
+      {{end}}
+    </ul>
+  {{end}}
+
+  {{if .Decisions}}
+    <h3>Decisions</h3>
+
+    <ul>
+      {{range .Decisions}}
+        <li>
+          {{.Item}} → {{.Decision}}
+          {{if .Reason}}
+            ({{.Reason}})
+          {{end}}
+        </li>
+      {{end}}
+    </ul>
+  {{end}}
+
+  <h3>Record textual decision</h3>
+
+  <form
+    hx-post="/ui/workspaces/{{.WorkspaceID}}/quarantine/decisions"
+    hx-target="#result"
+    hx-swap="innerHTML"
+  >
+    <div class="row">
+      <input type="text" name="authority_token" placeholder="Authority token">
+    </div>
+
+    <div class="row">
+      <input type="text" name="item" placeholder="quarantined path">
+    </div>
+
+    <div class="row">
+      <select name="decision">
+        <option value="approve">approve</option>
+        <option value="reject">reject</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <input type="text" name="reason" placeholder="reason">
+    </div>
+
+    <button>Record decision</button>
+  </form>
+{{end}}
+
+{{define "actors"}}
+  <ul>
+    {{range .}}
+      <li>
+        <div><strong>{{.ID}}</strong> [{{.Status}}]</div>
+        <div>Action: {{.TriggerAction}}</div>
+        <div>Path: {{.Path}}</div>
+        <div>Lineage: {{.LineageID}}</div>
+        <div>Depth: {{.Depth}}</div>
+        <div>Budget: {{.Budget}}</div>
+        <div>Expires: {{.ExpiresAt}}</div>
+      </li>
+    {{else}}
+      <li>No actor activations.</li>
+    {{end}}
+  </ul>
+{{end}}
+
+{{define "diff"}}
+  <div><div>Receipt: {{.ReceiptID}}</div><div>Path: {{.Path}}</div></div>
+  <pre>{{.Diff}}</pre>
+{{end}}
+
