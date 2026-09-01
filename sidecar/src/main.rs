@@ -5,22 +5,122 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+#[cfg(test)]
 use uuid::Uuid;
+
+const GENESIS_HASH: &str = "genesis";
+const RECORD_VERSION: u8 = 1;
+const CHECKPOINT_VERSION: u8 = 1;
+#[cfg(test)]
+const APPEND_ATOMICITY_CLASSIFICATION: &str = "PARTIAL_WRITE_POSSIBLE";
 
 #[derive(Clone)]
 struct AppState {
     ledger: PathBuf,
     checkpoints: PathBuf,
-    last_hash: String,
-    seq: u64,
+    accepted: LedgerState,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LedgerState {
+    seq: u64,
+    head_hash: String,
+    history_hash: String,
+    accepted_count: u64,
+}
+
+impl LedgerState {
+    fn genesis() -> Self {
+        Self {
+            seq: 0,
+            head_hash: GENESIS_HASH.to_owned(),
+            history_hash: GENESIS_HASH.to_owned(),
+            accepted_count: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecoveryClass {
+    SequenceGap,
+    DuplicateSequence,
+    WrongPrevHash,
+    BadContentHash,
+    MalformedRecord,
+    MalformedCheckpoint,
+    StaleCheckpoint,
+    TruncatedTail,
+    Io,
+}
+
+#[derive(Debug)]
+struct LedgerError {
+    class: RecoveryClass,
+    detail: String,
+}
+
+impl LedgerError {
+    fn new(class: RecoveryClass, detail: impl Into<String>) -> Self {
+        Self {
+            class,
+            detail: detail.into(),
+        }
+    }
+}
+
+impl fmt::Display for LedgerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}: {}", self.class, self.detail)
+    }
+}
+
+impl std::error::Error for LedgerError {}
+
+impl From<io::Error> for LedgerError {
+    fn from(err: io::Error) -> Self {
+        Self::new(RecoveryClass::Io, err.to_string())
+    }
+}
+
+// This is the complete deterministic input to the record hash. Evidence is
+// supplied by Go after Go has made its admission decision; Rust does not add
+// policy, timestamps, IDs, or other admission fields.
+#[derive(Serialize)]
+struct HashInput<'a> {
+    version: u8,
+    seq: u64,
+    prev_hash: &'a str,
+    evidence: &'a Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct LedgerRecord {
+    version: u8,
+    seq: u64,
+    prev_hash: String,
+    evidence: Value,
+    hash: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct Checkpoint {
+    version: u8,
+    seq: u64,
+    head_hash: String,
+    history_hash: String,
+}
+
+#[derive(Debug)]
 struct AppendedEvent {
     id: Value,
     seq: u64,
@@ -30,24 +130,20 @@ struct AppendedEvent {
 #[tokio::main]
 async fn main() {
     let data_dir = std::env::var("SIDECAR_DATA_DIR").unwrap_or_else(|_| "data-sidecar".into());
-
     let ledger = PathBuf::from(&data_dir).join("events").join("ledger.jsonl");
-
     let checkpoints = PathBuf::from(&data_dir).join("checkpoints");
 
-    fs::create_dir_all(ledger.parent().unwrap()).expect("create sidecar event directory");
+    fs::create_dir_all(ledger.parent().expect("ledger parent"))
+        .expect("create sidecar event directory");
     fs::create_dir_all(&checkpoints).expect("create sidecar checkpoint directory");
 
-    let mut state = AppState {
+    let accepted = open_verified_state(&ledger, &checkpoints)
+        .unwrap_or_else(|err| panic!("strict ledger startup refused: {err}"));
+    let state = Arc::new(Mutex::new(AppState {
         ledger,
         checkpoints,
-        last_hash: "genesis".into(),
-        seq: 0,
-    };
-
-    load_existing_ledger(&mut state);
-
-    let state = Arc::new(Mutex::new(state));
+        accepted,
+    }));
 
     let app = Router::new()
         .route("/health", get(health))
@@ -56,269 +152,412 @@ async fn main() {
         .route("/checkpoints", post(create_checkpoint))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:9090")
+    let listen_addr =
+        std::env::var("SIDECAR_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:9090".to_owned());
+    let listener = tokio::net::TcpListener::bind(&listen_addr)
         .await
         .expect("bind sidecar listener");
-
-    println!("msl-ledger-sidecar listening on 0.0.0.0:9090");
-
+    println!("msl-ledger-sidecar listening on {listen_addr}");
     axum::serve(listener, app)
         .await
         .expect("run sidecar server");
 }
 
-fn load_existing_ledger(state: &mut AppState) {
-    let Ok(file) = File::open(&state.ledger) else {
-        return;
-    };
-
-    let reader = BufReader::new(file);
-
-    for line in reader.lines().flatten() {
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-
-        if let Some(seq) = value.get("seq").and_then(|v| v.as_u64()) {
-            if seq > state.seq {
-                state.seq = seq;
-            }
-        }
-
-        if let Some(hash) = value.get("hash").and_then(|v| v.as_str()) {
-            state.last_hash = hash.to_string();
-        }
-    }
-}
-
 async fn health() -> impl IntoResponse {
-    Json(json!({
-        "status": "ok"
-    }))
+    Json(json!({ "status": "ok" }))
 }
 
-async fn get_events(State(state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
-    let state = state.lock().unwrap();
-
-    let mut events = Vec::new();
-
-    if let Ok(file) = File::open(&state.ledger) {
-        let reader = BufReader::new(file);
-
-        for line in reader.lines().flatten() {
-            if let Ok(value) = serde_json::from_str::<Value>(&line) {
-                events.push(value);
-            }
-        }
-    }
-
-    Json(json!({
-        "events": events
-    }))
+async fn get_events(
+    State(state): State<Arc<Mutex<AppState>>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let state = state.lock().expect("state mutex poisoned");
+    open_verified_state(&state.ledger, &state.checkpoints)
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    let records = read_records(&state.ledger)
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    Ok(Json(json!({ "events": records })))
 }
 
 async fn post_event(
     State(state): State<Arc<Mutex<AppState>>>,
-    Json(mut event): Json<Value>,
+    Json(evidence): Json<Value>,
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, String)> {
-    let mut state = state.lock().unwrap();
-
-    let appended = append_event(&mut state, &mut event)
+    let mut state = state.lock().expect("state mutex poisoned");
+    let appended = append_evidence(&mut state, evidence)
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-
     Ok((
         StatusCode::CREATED,
         Json(json!({
             "status": "recorded",
             "id": appended.id,
             "seq": appended.seq,
-            "hash": appended.hash
+            "hash": appended.hash,
         })),
     ))
 }
 
-fn append_event(state: &mut AppState, event: &mut Value) -> io::Result<AppendedEvent> {
-    let candidate_seq = state.seq + 1;
-    let candidate_prev_hash = state.last_hash.clone();
-
-    if event.get("id").is_none() {
-        event["id"] = json!(Uuid::new_v4().to_string());
+fn append_evidence(state: &mut AppState, evidence: Value) -> Result<AppendedEvent, LedgerError> {
+    // Append atomicity is PARTIAL_WRITE_POSSIBLE: a prior uncertain/partial
+    // write must not be papered over by another append.
+    let observed = open_verified_state(&state.ledger, &state.checkpoints)?;
+    if observed != state.accepted {
+        return Err(LedgerError::new(
+            RecoveryClass::StaleCheckpoint,
+            "on-disk ledger does not match accepted in-memory state",
+        ));
     }
 
-    if let Some(obj) = event.as_object_mut() {
-        obj.remove("hash");
-    }
+    let candidate_seq = state.accepted.seq + 1;
+    let candidate_prev_hash = state.accepted.head_hash.clone();
+    let hash = hash_record(candidate_seq, &candidate_prev_hash, &evidence)?;
+    let record = LedgerRecord {
+        version: RECORD_VERSION,
+        seq: candidate_seq,
+        prev_hash: candidate_prev_hash,
+        evidence: evidence.clone(),
+        hash: hash.clone(),
+    };
+    let mut line = canonical_json(&record)?;
+    line.push(b'\n');
 
-    event["seq"] = json!(candidate_seq);
-    event["prev_hash"] = json!(candidate_prev_hash);
-    event["recorded_at"] = json!(chrono::Utc::now().to_rfc3339());
-    event["authority"] = json!("rust_sidecar");
-
-    let hash_payload = serde_json::to_string(&event).unwrap_or_default();
-    let hash = hex_sha256(hash_payload.as_bytes());
-
-    event["hash"] = json!(hash);
-
-    let line = serde_json::to_string(&event).unwrap_or_default();
-
+    let existed = state.ledger.exists();
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(&state.ledger)?;
+    file.write_all(&line)?;
+    file.sync_all()?;
+    if !existed {
+        sync_parent(&state.ledger)?;
+    }
 
-    writeln!(file, "{}", line)?;
-    file.sync_data()?;
-
-    state.seq = candidate_seq;
-    state.last_hash = hash.clone();
-
+    // Commit accepted state only after open, write, and sync completed.
+    state.accepted = advance(&state.accepted, &hash);
     Ok(AppendedEvent {
-        id: event["id"].clone(),
+        id: evidence.get("id").cloned().unwrap_or(Value::Null),
         seq: candidate_seq,
         hash,
     })
 }
 
 async fn verify_events(State(state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
-    let state = state.lock().unwrap();
-
-    Json(verify_ledger(&state.ledger))
-}
-
-fn verify_ledger(ledger: &Path) -> Value {
-    let mut prev = "genesis".to_string();
-    let mut expected_seq = 1u64;
-    let mut checked = 0u64;
-
-    let file = match File::open(ledger) {
-        Ok(f) => f,
-        Err(_) => {
-            return json!({
-                "ok": true,
-                "events_checked": 0,
-                "last_hash": prev
-            })
-        }
-    };
-
-    let reader = BufReader::new(file);
-
-    for line in reader.lines().flatten() {
-        let mut value: Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(err) => {
-                return json!({
-                    "ok": false,
-                    "reason": format!("invalid json: {}", err),
-                    "events_checked": checked
-                })
-            }
-        };
-
-        let stored_hash = value
-            .get("hash")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let stored_prev = value
-            .get("prev_hash")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let stored_seq = value.get("seq").and_then(|v| v.as_u64()).unwrap_or(0);
-
-        if stored_prev != prev {
-            return json!({
-                "ok": false,
-                "reason": "prev_hash mismatch",
-                "failed_seq": stored_seq,
-                "events_checked": checked
-            });
-        }
-
-        if stored_seq != expected_seq {
-            return json!({
-                "ok": false,
-                "reason": "seq mismatch",
-                "failed_seq": stored_seq,
-                "events_checked": checked
-            });
-        }
-
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove("hash");
-        }
-
-        let payload = serde_json::to_string(&value).unwrap_or_default();
-        let computed = hex_sha256(payload.as_bytes());
-
-        if computed != stored_hash {
-            return json!({
-                "ok": false,
-                "reason": "hash mismatch",
-                "failed_seq": stored_seq,
-                "events_checked": checked
-            });
-        }
-
-        prev = stored_hash;
-        expected_seq += 1;
-        checked += 1;
+    let state = state.lock().expect("state mutex poisoned");
+    match open_verified_state(&state.ledger, &state.checkpoints) {
+        Ok(verified) => Json(json!({
+            "ok": true,
+            "events_checked": verified.accepted_count,
+            "last_hash": verified.head_hash,
+        })),
+        Err(err) => Json(json!({
+            "ok": false,
+            "reason": err.to_string(),
+            "recovery_class": format!("{:?}", err.class),
+        })),
     }
-
-    json!({
-        "ok": true,
-        "events_checked": checked,
-        "last_hash": prev
-    })
 }
 
-async fn create_checkpoint(State(state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
-    let state = state.lock().unwrap();
-
-    let checkpoint = json!({
-        "created_at": chrono::Utc::now().to_rfc3339(),
-        "seq": state.seq,
-        "last_hash": state.last_hash,
-    });
-
-    let name = format!("checkpoint-{}-{}.json", state.seq, &state.last_hash[..12]);
-
-    let path = state.checkpoints.join(name);
-
-    if let Err(err) = fs::write(&path, serde_json::to_string_pretty(&checkpoint).unwrap()) {
-        return (
+async fn create_checkpoint(
+    State(state): State<Arc<Mutex<AppState>>>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, String)> {
+    let state = state.lock().expect("state mutex poisoned");
+    let observed = open_verified_state(&state.ledger, &state.checkpoints)
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    if observed != state.accepted {
+        return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": err.to_string()
-            })),
-        );
+            LedgerError::new(
+                RecoveryClass::StaleCheckpoint,
+                "on-disk ledger does not match accepted in-memory state",
+            )
+            .to_string(),
+        ));
     }
-
-    (
+    let checkpoint = Checkpoint {
+        version: CHECKPOINT_VERSION,
+        seq: state.accepted.seq,
+        head_hash: state.accepted.head_hash.clone(),
+        history_hash: state.accepted.history_hash.clone(),
+    };
+    let path = state.checkpoints.join(checkpoint_file_name(&checkpoint));
+    write_checkpoint(&path, &checkpoint)
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    Ok((
         StatusCode::CREATED,
         Json(json!({
             "status": "checkpoint_created",
             "path": path,
-            "checkpoint": checkpoint
+            "checkpoint": checkpoint,
         })),
+    ))
+}
+
+fn checkpoint_file_name(checkpoint: &Checkpoint) -> String {
+    format!(
+        "checkpoint-{}-{}.json",
+        checkpoint.seq,
+        short_hash(&checkpoint.head_hash)
     )
+}
+
+fn short_hash(hash: &str) -> &str {
+    hash.get(..12).unwrap_or(hash)
+}
+
+fn write_checkpoint(path: &Path, checkpoint: &Checkpoint) -> Result<(), LedgerError> {
+    let bytes = canonical_json(checkpoint)?;
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => {
+            file.write_all(&bytes)?;
+            file.write_all(b"\n")?;
+            file.sync_all()?;
+            sync_parent(path)?;
+            Ok(())
+        }
+        Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+            let existing = read_checkpoint(path)?;
+            if existing.seq == checkpoint.seq
+                && existing.head_hash == checkpoint.head_hash
+                && existing.history_hash == checkpoint.history_hash
+                && existing.version == checkpoint.version
+            {
+                Ok(())
+            } else {
+                Err(LedgerError::new(
+                    RecoveryClass::StaleCheckpoint,
+                    format!(
+                        "checkpoint path already binds different history: {}",
+                        path.display()
+                    ),
+                ))
+            }
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn sync_parent(path: &Path) -> Result<(), LedgerError> {
+    File::open(path.parent().expect("path parent"))?.sync_all()?;
+    Ok(())
+}
+
+fn open_verified_state(ledger: &Path, checkpoints: &Path) -> Result<LedgerState, LedgerError> {
+    let records = read_records(ledger)?;
+    let state = replay_records(&records)?;
+    validate_checkpoints(checkpoints, &records)?;
+    Ok(state)
+}
+
+#[cfg(test)]
+fn replay_ledger(ledger: &Path) -> Result<LedgerState, LedgerError> {
+    replay_records(&read_records(ledger)?)
+}
+
+fn read_records(ledger: &Path) -> Result<Vec<LedgerRecord>, LedgerError> {
+    let bytes = match fs::read(ledger) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err.into()),
+    };
+    if !bytes.is_empty() && !bytes.ends_with(b"\n") {
+        return Err(LedgerError::new(
+            RecoveryClass::TruncatedTail,
+            "ledger does not end in a record delimiter",
+        ));
+    }
+    let lines: Vec<_> = bytes.split(|byte| *byte == b'\n').collect();
+    let mut records = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if line.is_empty() {
+            if index == lines.len() - 1 {
+                continue;
+            }
+            return Err(LedgerError::new(
+                RecoveryClass::MalformedRecord,
+                format!("line {}: empty record", index + 1),
+            ));
+        }
+        let record = serde_json::from_slice::<LedgerRecord>(line).map_err(|err| {
+            LedgerError::new(
+                RecoveryClass::MalformedRecord,
+                format!("line {}: {err}", index + 1),
+            )
+        })?;
+        records.push(record);
+    }
+    Ok(records)
+}
+
+fn replay_records(records: &[LedgerRecord]) -> Result<LedgerState, LedgerError> {
+    replay_from(LedgerState::genesis(), records)
+}
+
+fn replay_from(
+    mut state: LedgerState,
+    records: &[LedgerRecord],
+) -> Result<LedgerState, LedgerError> {
+    for (index, record) in records.iter().enumerate() {
+        if record.version != RECORD_VERSION {
+            return Err(LedgerError::new(
+                RecoveryClass::MalformedRecord,
+                format!(
+                    "line {}: unsupported record version {}",
+                    index + 1,
+                    record.version
+                ),
+            ));
+        }
+        let expected_seq = state.seq + 1;
+        if record.seq < expected_seq {
+            return Err(LedgerError::new(
+                RecoveryClass::DuplicateSequence,
+                format!(
+                    "line {}: expected seq {expected_seq}, got {}",
+                    index + 1,
+                    record.seq
+                ),
+            ));
+        }
+        if record.seq > expected_seq {
+            return Err(LedgerError::new(
+                RecoveryClass::SequenceGap,
+                format!(
+                    "line {}: expected seq {expected_seq}, got {}",
+                    index + 1,
+                    record.seq
+                ),
+            ));
+        }
+        if record.prev_hash != state.head_hash {
+            return Err(LedgerError::new(
+                RecoveryClass::WrongPrevHash,
+                format!(
+                    "line {}: expected previous hash {}",
+                    index + 1,
+                    state.head_hash
+                ),
+            ));
+        }
+        let computed = hash_record(record.seq, &record.prev_hash, &record.evidence)?;
+        if record.hash != computed {
+            return Err(LedgerError::new(
+                RecoveryClass::BadContentHash,
+                format!(
+                    "line {}: stored record hash does not match deterministic input",
+                    index + 1
+                ),
+            ));
+        }
+        state = advance(&state, &record.hash);
+    }
+    Ok(state)
+}
+
+fn advance(previous: &LedgerState, record_hash: &str) -> LedgerState {
+    LedgerState {
+        seq: previous.seq + 1,
+        head_hash: record_hash.to_owned(),
+        history_hash: hash_history(&previous.history_hash, record_hash),
+        accepted_count: previous.accepted_count + 1,
+    }
+}
+
+fn validate_checkpoints(checkpoints: &Path, records: &[LedgerRecord]) -> Result<(), LedgerError> {
+    if !checkpoints.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(checkpoints)? {
+        let path = entry?.path();
+        if !path.is_file()
+            || !path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("checkpoint-"))
+        {
+            continue;
+        }
+        let checkpoint = read_checkpoint(&path)?;
+        let prefix_len = usize::try_from(checkpoint.seq).map_err(|_| {
+            LedgerError::new(
+                RecoveryClass::StaleCheckpoint,
+                "checkpoint sequence cannot fit platform",
+            )
+        })?;
+        if prefix_len > records.len() {
+            return Err(LedgerError::new(
+                RecoveryClass::StaleCheckpoint,
+                format!(
+                    "{} claims unavailable seq {}",
+                    path.display(),
+                    checkpoint.seq
+                ),
+            ));
+        }
+        let prefix = replay_records(&records[..prefix_len])?;
+        if checkpoint.version != CHECKPOINT_VERSION
+            || checkpoint.seq != prefix.seq
+            || checkpoint.head_hash != prefix.head_hash
+            || checkpoint.history_hash != prefix.history_hash
+        {
+            return Err(LedgerError::new(
+                RecoveryClass::StaleCheckpoint,
+                format!("{} does not bind ledger history", path.display()),
+            ));
+        }
+        // Prefix is verified before suffix: a checkpoint may safely be behind
+        // the head, but it is never accepted merely because its file exists.
+        replay_from(prefix, &records[prefix_len..]).map_err(|err| {
+            LedgerError::new(
+                err.class,
+                format!("checkpoint suffix after {}: {}", path.display(), err.detail),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn read_checkpoint(path: &Path) -> Result<Checkpoint, LedgerError> {
+    let bytes = fs::read(path)?;
+    if bytes.is_empty() || !bytes.ends_with(b"\n") {
+        return Err(LedgerError::new(
+            RecoveryClass::MalformedCheckpoint,
+            format!("{} is empty or unterminated", path.display()),
+        ));
+    }
+    let trimmed = &bytes[..bytes.len() - 1];
+    serde_json::from_slice(trimmed).map_err(|err| {
+        LedgerError::new(
+            RecoveryClass::MalformedCheckpoint,
+            format!("{}: {err}", path.display()),
+        )
+    })
+}
+
+fn hash_record(seq: u64, prev_hash: &str, evidence: &Value) -> Result<String, LedgerError> {
+    Ok(hex_sha256(&canonical_json(&HashInput {
+        version: RECORD_VERSION,
+        seq,
+        prev_hash,
+        evidence,
+    })?))
+}
+
+fn hash_history(previous_history_hash: &str, record_hash: &str) -> String {
+    hex_sha256(format!("{previous_history_hash}\n{record_hash}").as_bytes())
+}
+
+fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, LedgerError> {
+    serde_json::to_vec(value)
+        .map_err(|err| LedgerError::new(RecoveryClass::BadContentHash, err.to_string()))
 }
 
 fn hex_sha256(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
-    let result = hasher.finalize();
-
-    result.iter().map(|b| format!("{:02x}", b)).collect()
+    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
 
     struct TestDataDir(PathBuf);
 
@@ -330,12 +569,19 @@ mod tests {
             Self(path)
         }
 
+        fn ledger(&self) -> PathBuf {
+            self.0.join("events/ledger.jsonl")
+        }
+
+        fn checkpoints(&self) -> PathBuf {
+            self.0.join("checkpoints")
+        }
+
         fn state(&self) -> AppState {
             AppState {
-                ledger: self.0.join("events/ledger.jsonl"),
-                checkpoints: self.0.join("checkpoints"),
-                last_hash: "genesis".into(),
-                seq: 0,
+                ledger: self.ledger(),
+                checkpoints: self.checkpoints(),
+                accepted: open_verified_state(&self.ledger(), &self.checkpoints()).unwrap(),
             }
         }
     }
@@ -346,176 +592,293 @@ mod tests {
         }
     }
 
-    fn event_count(ledger: &Path) -> usize {
-        fs::read_to_string(ledger)
-            .map(|contents| contents.lines().count())
-            .unwrap_or(0)
+    fn append(state: &mut AppState, kind: &str) -> AppendedEvent {
+        append_evidence(state, json!({"id": kind, "type": kind})).unwrap()
     }
 
-    fn force_append_failure(ledger: &Path) -> PathBuf {
-        let saved = ledger.with_extension("jsonl.saved");
-        fs::rename(ledger, &saved).unwrap();
-        fs::create_dir(ledger).unwrap();
-        saved
-    }
-
-    fn restore_ledger(ledger: &Path, saved: &Path) {
-        fs::remove_dir(ledger).unwrap();
-        fs::rename(saved, ledger).unwrap();
-    }
-
-    #[tokio::test]
-    async fn failed_append_preserves_accepted_seq_head_and_count() {
-        let data_dir = TestDataDir::new();
-        let app_state = Arc::new(Mutex::new(data_dir.state()));
-
-        let _ = post_event(State(app_state.clone()), Json(json!({"type": "first"})))
-            .await
-            .unwrap();
-
-        let (ledger, before_seq, before_head) = {
-            let state = app_state.lock().unwrap();
-            (state.ledger.clone(), state.seq, state.last_hash.clone())
-        };
-        let saved = force_append_failure(&ledger);
-
-        let error = post_event(State(app_state.clone()), Json(json!({"type": "failed"})))
-            .await
-            .unwrap_err();
-
-        assert_eq!(error.0, StatusCode::INTERNAL_SERVER_ERROR);
-        assert!(error.1.contains("Is a directory"));
-        let state = app_state.lock().unwrap();
-        assert_eq!(state.seq, before_seq);
-        assert_eq!(state.last_hash, before_head);
-        assert_eq!(event_count(&saved), 1);
-    }
-
-    #[tokio::test]
-    async fn retry_uses_next_accepted_sequence_and_chain_verifies() {
-        let data_dir = TestDataDir::new();
-        let app_state = Arc::new(Mutex::new(data_dir.state()));
-
-        let _ = post_event(State(app_state.clone()), Json(json!({"type": "first"})))
-            .await
-            .unwrap();
-        let ledger = app_state.lock().unwrap().ledger.clone();
-        let saved = force_append_failure(&ledger);
-
-        post_event(State(app_state.clone()), Json(json!({"type": "failed"})))
-            .await
-            .unwrap_err();
-        restore_ledger(&ledger, &saved);
-
-        let retry = post_event(State(app_state.clone()), Json(json!({"type": "retry"})))
-            .await
-            .unwrap();
-
-        assert_eq!(retry.1 .0["seq"], 2);
-        assert_eq!(event_count(&ledger), 2);
-        assert_eq!(verify_ledger(&ledger)["ok"], true);
-    }
-
-    #[tokio::test]
-    async fn failed_retry_restart_recovers_accepted_state_and_verifies() {
-        let data_dir = TestDataDir::new();
-        let app_state = Arc::new(Mutex::new(data_dir.state()));
-
-        let _ = post_event(State(app_state.clone()), Json(json!({"type": "first"})))
-            .await
-            .unwrap();
-        let ledger = app_state.lock().unwrap().ledger.clone();
-        let saved = force_append_failure(&ledger);
-
-        post_event(State(app_state.clone()), Json(json!({"type": "failed"})))
-            .await
-            .unwrap_err();
-        restore_ledger(&ledger, &saved);
-        let _ = post_event(State(app_state), Json(json!({"type": "retry"})))
-            .await
-            .unwrap();
-
-        let mut restarted = data_dir.state();
-        load_existing_ledger(&mut restarted);
-
-        assert_eq!(restarted.seq, 2);
-        assert_ne!(restarted.last_hash, "genesis");
-        assert_eq!(verify_ledger(&ledger)["ok"], true);
-        assert_eq!(verify_ledger(&ledger)["events_checked"], 2);
-    }
-
-    #[tokio::test]
-    async fn two_failures_then_success_consumes_exactly_one_ordinal() {
-        let data_dir = TestDataDir::new();
-        let app_state = Arc::new(Mutex::new(data_dir.state()));
-
-        let _ = post_event(State(app_state.clone()), Json(json!({"type": "first"})))
-            .await
-            .unwrap();
-        let ledger = app_state.lock().unwrap().ledger.clone();
-        let saved = force_append_failure(&ledger);
-
-        for event_type in ["failed-one", "failed-two"] {
-            post_event(State(app_state.clone()), Json(json!({"type": event_type})))
-                .await
-                .unwrap_err();
+    fn write_records(path: &Path, records: &[LedgerRecord]) {
+        let mut bytes = Vec::new();
+        for record in records {
+            bytes.extend(canonical_json(record).unwrap());
+            bytes.push(b'\n');
         }
-        restore_ledger(&ledger, &saved);
-        let _ = post_event(State(app_state.clone()), Json(json!({"type": "success"})))
-            .await
-            .unwrap();
+        fs::write(path, bytes).unwrap();
+    }
 
-        let events: Vec<Value> = fs::read_to_string(&ledger)
-            .unwrap()
-            .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect();
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0]["seq"], 1);
-        assert_eq!(events[1]["seq"], 2);
-        assert_eq!(app_state.lock().unwrap().seq, 2);
+    fn assert_class(result: Result<LedgerState, LedgerError>, class: RecoveryClass) {
+        assert_eq!(result.unwrap_err().class, class);
     }
 
     #[test]
-    fn concurrent_appends_are_contiguous() {
-        let data_dir = TestDataDir::new();
-        let app_state = Arc::new(Mutex::new(data_dir.state()));
+    fn genesis_and_short_id_checkpoint_are_valid() {
+        let data = TestDataDir::new();
+        let state = data.state();
+        assert_eq!(state.accepted, LedgerState::genesis());
+        let checkpoint = Checkpoint {
+            version: CHECKPOINT_VERSION,
+            seq: 0,
+            head_hash: GENESIS_HASH.into(),
+            history_hash: GENESIS_HASH.into(),
+        };
+        let path = data.checkpoints().join(checkpoint_file_name(&checkpoint));
+        write_checkpoint(&path, &checkpoint).unwrap();
+        assert_eq!(short_hash("x"), "x");
+        assert_eq!(
+            open_verified_state(&data.ledger(), &data.checkpoints()).unwrap(),
+            state.accepted
+        );
+    }
 
-        let handles: Vec<_> = (0..3)
-            .map(|ordinal| {
-                let app_state = app_state.clone();
-                std::thread::spawn(move || {
-                    let mut event = json!({"type": format!("concurrent-{ordinal}")});
-                    let mut state = app_state.lock().unwrap();
-                    let _ = append_event(&mut state, &mut event).unwrap();
-                })
-            })
-            .collect();
+    #[test]
+    fn one_many_and_restart_replay_exact_accepted_state() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        let first = append(&mut state, "one");
+        assert_eq!(first.seq, 1);
+        append(&mut state, "two");
+        append(&mut state, "three");
+        let restarted = data.state();
+        assert_eq!(restarted.accepted, state.accepted);
+        assert_eq!(restarted.accepted.accepted_count, 3);
+    }
 
-        for handle in handles {
-            handle.join().unwrap();
-        }
+    #[test]
+    fn verified_checkpoint_and_suffix_replay() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "one");
+        let checkpoint = Checkpoint {
+            version: CHECKPOINT_VERSION,
+            seq: state.accepted.seq,
+            head_hash: state.accepted.head_hash.clone(),
+            history_hash: state.accepted.history_hash.clone(),
+        };
+        write_checkpoint(
+            &data.checkpoints().join(checkpoint_file_name(&checkpoint)),
+            &checkpoint,
+        )
+        .unwrap();
+        append(&mut state, "two");
+        let restarted = data.state();
+        assert_eq!(restarted.accepted, state.accepted);
+        assert_eq!(restarted.accepted.seq, 2);
+    }
 
-        let ledger = app_state.lock().unwrap().ledger.clone();
-        assert_eq!(event_count(&ledger), 3);
-        assert_eq!(verify_ledger(&ledger)["ok"], true);
-        assert_eq!(verify_ledger(&ledger)["events_checked"], 3);
+    #[test]
+    fn failed_open_does_not_advance_and_retry_uses_exactly_next_sequence() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "first");
+        let saved = data.ledger().with_extension("saved");
+        fs::rename(data.ledger(), &saved).unwrap();
+        fs::create_dir(data.ledger()).unwrap();
+        let before = state.accepted.clone();
+        assert_eq!(
+            append_evidence(&mut state, json!({"id": "failed"}))
+                .unwrap_err()
+                .class,
+            RecoveryClass::Io
+        );
+        assert_eq!(state.accepted, before);
+        fs::remove_dir(data.ledger()).unwrap();
+        fs::rename(saved, data.ledger()).unwrap();
+        assert_eq!(append(&mut state, "retry").seq, 2);
+        assert_eq!(state.accepted.accepted_count, 2);
+    }
+
+    #[test]
+    fn failed_append_can_checkpoint_prior_accepted_head() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "first");
+        let saved = data.ledger().with_extension("saved");
+        fs::rename(data.ledger(), &saved).unwrap();
+        fs::create_dir(data.ledger()).unwrap();
+        assert!(append_evidence(&mut state, json!({"id": "failed"})).is_err());
+        fs::remove_dir(data.ledger()).unwrap();
+        fs::rename(saved, data.ledger()).unwrap();
+        let checkpoint = Checkpoint {
+            version: CHECKPOINT_VERSION,
+            seq: state.accepted.seq,
+            head_hash: state.accepted.head_hash.clone(),
+            history_hash: state.accepted.history_hash.clone(),
+        };
+        write_checkpoint(
+            &data.checkpoints().join(checkpoint_file_name(&checkpoint)),
+            &checkpoint,
+        )
+        .unwrap();
+        assert_eq!(data.state().accepted, state.accepted);
     }
 
     #[tokio::test]
-    async fn append_accepts_empty_null_and_large_values_contiguously() {
-        let data_dir = TestDataDir::new();
-        let app_state = Arc::new(Mutex::new(data_dir.state()));
+    async fn checkpoint_handler_persists_verified_current_state() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "first");
+        let app_state = Arc::new(Mutex::new(state));
 
-        for event in [json!(null), json!({}), json!({"payload": "x".repeat(8192)})] {
-            let _ = post_event(State(app_state.clone()), Json(event))
-                .await
-                .unwrap();
+        let response = create_checkpoint(State(app_state)).await.unwrap();
+        assert_eq!(response.0, StatusCode::CREATED);
+        assert_eq!(fs::read_dir(data.checkpoints()).unwrap().count(), 1);
+        assert_eq!(data.state().accepted.seq, 1);
+    }
+
+    #[tokio::test]
+    async fn checkpoint_handler_rejects_tampered_disk_history_without_emitting_checkpoint() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "first");
+        let app_state = Arc::new(Mutex::new(state));
+        let mut records = read_records(&data.ledger()).unwrap();
+        records[0].evidence = json!({"id": "tampered"});
+        write_records(&data.ledger(), &records);
+
+        let error = create_checkpoint(State(app_state)).await.unwrap_err();
+        assert_eq!(error.0, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(error.1.contains("BadContentHash"));
+        assert_eq!(fs::read_dir(data.checkpoints()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn partial_write_is_classified_without_claiming_append_atomicity() {
+        let data = TestDataDir::new();
+        // Isolated crash fixture: normal write+sync cannot prove OS append atomicity.
+        assert_eq!(APPEND_ATOMICITY_CLASSIFICATION, "PARTIAL_WRITE_POSSIBLE");
+        fs::write(data.ledger(), b"{\"version\":1").unwrap();
+        assert_class(replay_ledger(&data.ledger()), RecoveryClass::TruncatedTail);
+    }
+
+    #[test]
+    fn duplicate_sequence_and_gap_have_distinct_classifications() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "one");
+        let mut records = read_records(&data.ledger()).unwrap();
+        records.push(records[0].clone());
+        write_records(&data.ledger(), &records);
+        assert_class(
+            replay_ledger(&data.ledger()),
+            RecoveryClass::DuplicateSequence,
+        );
+        records.pop();
+        records[0].seq = 2;
+        records[0].hash =
+            hash_record(records[0].seq, &records[0].prev_hash, &records[0].evidence).unwrap();
+        write_records(&data.ledger(), &records);
+        assert_class(replay_ledger(&data.ledger()), RecoveryClass::SequenceGap);
+    }
+
+    #[test]
+    fn wrong_previous_hash_and_bad_content_hash_fail_strict_replay() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "one");
+        let mut records = read_records(&data.ledger()).unwrap();
+        records[0].prev_hash = "wrong".into();
+        write_records(&data.ledger(), &records);
+        assert_class(replay_ledger(&data.ledger()), RecoveryClass::WrongPrevHash);
+        records[0].prev_hash = GENESIS_HASH.into();
+        records[0].evidence = json!({"id": "tampered"});
+        write_records(&data.ledger(), &records);
+        assert_class(replay_ledger(&data.ledger()), RecoveryClass::BadContentHash);
+    }
+
+    #[test]
+    fn malformed_record_and_checkpoint_are_startup_failures() {
+        let data = TestDataDir::new();
+        fs::write(data.ledger(), b"not-json\n").unwrap();
+        assert_class(
+            open_verified_state(&data.ledger(), &data.checkpoints()),
+            RecoveryClass::MalformedRecord,
+        );
+        fs::write(data.ledger(), b"\n").unwrap();
+        assert_class(
+            open_verified_state(&data.ledger(), &data.checkpoints()),
+            RecoveryClass::MalformedRecord,
+        );
+        fs::write(data.ledger(), b"").unwrap();
+        fs::write(
+            data.checkpoints().join("checkpoint-bad.json"),
+            b"not-json\n",
+        )
+        .unwrap();
+        assert_class(
+            open_verified_state(&data.ledger(), &data.checkpoints()),
+            RecoveryClass::MalformedCheckpoint,
+        );
+    }
+
+    #[test]
+    fn stale_checkpoint_cannot_be_adopted() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        append(&mut state, "one");
+        let stale = Checkpoint {
+            version: CHECKPOINT_VERSION,
+            seq: 1,
+            head_hash: "not-the-ledger-head".into(),
+            history_hash: state.accepted.history_hash.clone(),
+        };
+        write_checkpoint(
+            &data.checkpoints().join(checkpoint_file_name(&stale)),
+            &stale,
+        )
+        .unwrap();
+        assert_class(
+            open_verified_state(&data.ledger(), &data.checkpoints()),
+            RecoveryClass::StaleCheckpoint,
+        );
+    }
+
+    #[test]
+    fn bounded_fixed_seed_model_preserves_head_and_count_invariants() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        let mut seed = 0x5eed_u64;
+        for ordinal in 0..64 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let evidence = json!({"id": format!("op-{ordinal}"), "value": seed % 17});
+            let appended = append_evidence(&mut state, evidence).unwrap();
+            assert_eq!(appended.seq, ordinal + 1);
+            assert_eq!(state.accepted.seq, state.accepted.accepted_count);
         }
+        assert_eq!(replay_ledger(&data.ledger()).unwrap(), state.accepted);
+    }
 
-        let ledger = app_state.lock().unwrap().ledger.clone();
-        assert_eq!(event_count(&ledger), 3);
-        assert_eq!(verify_ledger(&ledger)["ok"], true);
-        assert_eq!(verify_ledger(&ledger)["events_checked"], 3);
+    #[tokio::test]
+    async fn go_forwarding_contract_preserves_approved_evidence_and_rejects_write_without_phantom()
+    {
+        let data = TestDataDir::new();
+        let app_state = Arc::new(Mutex::new(data.state()));
+        // Exact Go Event JSON shape: Rust treats this as opaque evidence rather
+        // than re-admitting it or changing Go's policy decision.
+        let approved = json!({
+            "id": "go-approved-1", "seq": 1, "created_at": "2026-08-31T00:00:00Z",
+            "type": "transition", "action": "apply", "status": "accepted",
+            "prev_hash": "genesis", "hash": "go-local-hash"
+        });
+        let response = post_event(State(app_state.clone()), Json(approved.clone()))
+            .await
+            .unwrap();
+        assert_eq!(response.0, StatusCode::CREATED);
+        assert_eq!(response.1 .0["seq"], 1);
+        let records = read_records(&data.ledger()).unwrap();
+        assert_eq!(records[0].evidence, approved);
+        assert_eq!(replay_ledger(&data.ledger()).unwrap().seq, 1);
+
+        let saved = data.ledger().with_extension("saved");
+        fs::rename(data.ledger(), &saved).unwrap();
+        fs::create_dir(data.ledger()).unwrap();
+        let rejected = post_event(State(app_state.clone()), Json(json!({"id": "go-retry"}))).await;
+        assert_eq!(rejected.unwrap_err().0, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(app_state.lock().unwrap().accepted.seq, 1);
+        fs::remove_dir(data.ledger()).unwrap();
+        fs::rename(saved, data.ledger()).unwrap();
+        let retry = post_event(State(app_state.clone()), Json(json!({"id": "go-retry"})))
+            .await
+            .unwrap();
+        assert_eq!(retry.1 .0["seq"], 2);
+        assert_eq!(data.state().accepted, app_state.lock().unwrap().accepted);
     }
 }
