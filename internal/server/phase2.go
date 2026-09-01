@@ -2,17 +2,13 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"flatten-workspace/internal/ids"
-	"flatten-workspace/internal/materialize"
 	"flatten-workspace/internal/receipts"
 	"flatten-workspace/internal/transition"
 	"flatten-workspace/internal/workspace"
@@ -218,97 +214,6 @@ func (s *Server) getEnvelope(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, env)
-}
-
-func (s *Server) materializeWorkspace(w http.ResponseWriter, r *http.Request) {
-	if err := s.requireAuthority(r); err != nil {
-		writeError(w, http.StatusForbidden, err)
-		return
-	}
-
-	id := r.PathValue("id")
-
-	ws, ok := s.store.Get(id)
-	if !ok {
-		writeError(w, http.StatusNotFound, fmt.Errorf("workspace %q not found", id))
-		return
-	}
-
-	var req struct {
-		Root    string `json:"root"`
-		Confirm bool   `json:"confirm"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("decode materialization request: %w", err))
-		return
-	}
-
-	if !req.Confirm {
-		writeError(w, http.StatusBadRequest, errors.New("materialization requires confirm:true"))
-		return
-	}
-
-	base := filepath.Join(s.DataDir, "materialized")
-
-	root := req.Root
-	if root == "" {
-		root = filepath.Join(base, ws.ID)
-	} else if !filepath.IsAbs(root) {
-		root = filepath.Join(base, root)
-	}
-
-	if !s.AllowAbsoluteRoot {
-		absRoot, err := filepath.Abs(root)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-
-		absBase, err := filepath.Abs(base)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		if !strings.HasPrefix(absRoot, absBase+string(os.PathSeparator)) {
-			writeError(
-				w,
-				http.StatusForbidden,
-				errors.New("materialization root must remain under the controlled data directory unless ALLOW_ABSOLUTE_ROOT=true"),
-			)
-			return
-		}
-	}
-
-	written, err := materialize.WriteWorkspace(ws, root, s.AllowAbsoluteRoot)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	receipt, err := s.recordTransition(
-		r,
-		ws,
-		"workspace.materialized",
-		"Materialize workspace to disk under explicit authority",
-		written,
-		map[string]any{
-			"root":       root,
-			"file_count": len(written),
-		},
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("record materialization transition: %w", err))
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"summary": ws.Summary(),
-		"receipt": receipt,
-		"root":    root,
-		"written": written,
-	})
 }
 
 func fileSHA(ws *workspace.Workspace, p string) string {

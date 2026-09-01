@@ -162,7 +162,13 @@ func FromEnvelope(env *Envelope) (*Workspace, error) {
 
 		dirCount++
 
-		for childName, childNode := range m {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, childName := range keys {
+			childNode := m[childName]
 			childPath := path.Join(nodePath, childName)
 			if err := walk(childName, childNode, childPath); err != nil {
 				return err
@@ -172,7 +178,13 @@ func FromEnvelope(env *Envelope) (*Workspace, error) {
 		return nil
 	}
 
-	for name, node := range env.Tree {
+	names := make([]string, 0, len(env.Tree))
+	for k := range env.Tree {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		node := env.Tree[name]
 		if err := walk(name, node, name); err != nil {
 			return nil, err
 		}

@@ -8,8 +8,13 @@ import (
 	"time"
 )
 
-// Membrane is the isolated Native/PureGo membrane. It is the sole adapter for native execution.
+// Membrane is the isolated bounded reference/native membrane. It is the sole adapter for native execution.
+// Truthfulness: pre-allowlisted Go functions only; unrestricted PureGo/dlopen NOT_IMPLEMENTED;
+// arbitrary library loading false; arbitrary symbol execution false; no arbitrary shell;
+// native execution does not gain canonical-state authority;
+// passing shell-bypass protection means arbitrary shell blocked not bypass exists.
 // Explicit allowlist, explicit I/O types, context timeout, no arbitrary library path, no authority over canonical state.
+// No cgo, no plugin.Open, no PureGo dlopen/dlsym on arbitrary paths — bounded Go switch only.
 type Membrane struct {
 	allowlist   map[string]map[string]bool
 	timeout     time.Duration
