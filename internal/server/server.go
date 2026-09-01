@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"flatten-workspace/assets"
 	"flatten-workspace/internal/actorstub"
 	"flatten-workspace/internal/authority"
 	"flatten-workspace/internal/eventlog"
@@ -154,6 +155,11 @@ func New() *Server {
 
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /assets/brand/cann-o-call-brand-source.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(assets.BrandSource)
 	})
 
 	// Current JSON surface.

@@ -60,7 +60,9 @@ admission fails closed; the local Go JSONL is only a Rust-acknowledged mirror.
 - Hash-chained Rust accepted-event evidence, strict ledger startup validation,
   verification, and checkpoints.
 - Progress/task views, receipts, replay/snapshot verification, and a
-  server-rendered `/ui` control surface.
+  server-rendered `/ui` control surface. **Flatten Workspace Studio** is the
+  operator-facing HTMX application; Cann-o-Call remains the runtime/project
+  behind its bounded controls.
 - A bounded reference/native membrane with pre-allowlisted Go operations. It
   has no canonical-state authority.
 

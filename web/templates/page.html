@@ -7,590 +7,401 @@
   <title>Flatten Workspace Studio</title>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <style>
-    body {
-      margin: 0;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      background: #0b1020;
-      color: #e6e9f0;
-    }
-
-    header {
-      padding: 16px 24px;
-      border-bottom: 1px solid #26304f;
-    }
-
-    main {
-      padding: 24px;
-      display: grid;
-      gap: 16px;
-    }
-
-    .panel {
-      border: 1px solid #26304f;
-      border-radius: 12px;
-      padding: 16px;
-      background: #0f1530;
-    }
-
-    textarea,
-    input[type="text"],
-    input[type="file"] {
-      width: 100%;
-      box-sizing: border-box;
-      background: #0a0f1f;
-      color: #e6e9f0;
-      border: 1px solid #2c3a63;
-      border-radius: 8px;
-      padding: 10px;
-      font-family: inherit;
-    }
-
-    textarea {
-      min-height: 120px;
-    }
-
-    button {
-      background: #17224a;
-      color: #e6e9f0;
-      border: 1px solid #3b4c7c;
-      border-radius: 8px;
-      padding: 10px 12px;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #1d2b5c;
-    }
-
-    ul {
-      list-style: none;
-      padding-left: 16px;
-      margin: 0;
-    }
-
-    li {
-      margin: 4px 0;
-    }
-
-    details {
-      margin-left: 8px;
-    }
-
-    summary {
-      cursor: pointer;
-      color: #8fb7ff;
-    }
-
-    .file {
-      cursor: pointer;
-      color: #d5e0ff;
-    }
-
-    pre {
-      white-space: pre-wrap;
-      overflow: auto;
-      background: #0a0f1f;
-      border: 1px solid #2c3a63;
-      border-radius: 8px;
-      padding: 12px;
-      max-height: 60vh;
-    }
-
-    .error {
-      color: #ff9f9f;
-    }
-
-    .grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .row {
-      display: grid;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-
-    .workspace-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+    :root { color-scheme: dark; --mint:#00FFD1; --cyan:#33C7FF; --periwinkle:#7A88FF; --yellow:#FFD84D; --red:#FF5A5A; --void:#0B0F1A; --surface:#121827; --raised:#1D2538; --muted:#A6B5C7; --text:#E6F7FF; --line:rgba(166,181,199,.22); }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; background:var(--void); color:var(--text); font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    button,input,textarea,select { font:inherit; }
+    button,.button { cursor:pointer; border:1px solid var(--line); border-radius:6px; color:var(--text); background:var(--raised); padding:8px 10px; text-decoration:none; }
+    button:hover,.button:hover { border-color:var(--cyan); color:var(--mint); }
+    button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+    input[type="text"],input[type="file"],textarea,select { width:100%; color:var(--text); background:var(--void); border:1px solid var(--line); border-radius:5px; padding:8px; }
+    textarea { min-height:105px; resize:vertical; }
+    code { color:var(--cyan); }
+    h1,h2,h3,p { margin-top:0; }
+    h1 { font-size:18px; letter-spacing:.06em; margin-bottom:2px; }
+    h2 { font-size:14px; margin-bottom:12px; color:var(--text); }
+    h3 { font-size:12px; margin-bottom:8px; color:var(--cyan); text-transform:uppercase; letter-spacing:.08em; }
+    pre { margin:0; max-height:360px; overflow:auto; white-space:pre-wrap; background:var(--void); border:1px solid var(--line); border-radius:5px; padding:10px; color:var(--text); }
+    .app { display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:100vh; }
+    .topbar { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:16px; padding:9px 16px; background:rgba(11,15,26,.97); border-bottom:1px solid var(--line); }
+    .brand-image { width:56px; height:42px; object-fit:contain; object-position:center; border:1px solid var(--line); border-radius:5px; background:var(--surface); }
+    .brand-copy { min-width:205px; }
+    .brand-copy p { margin:0; color:var(--muted); font-size:11px; }
+    .status-rail { margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; }
+    .chip { display:inline-flex; gap:5px; align-items:center; border:1px solid var(--line); border-radius:999px; padding:3px 8px; color:var(--muted); font-size:11px; white-space:nowrap; }
+    .chip::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--muted); }
+    .chip.ok::before { background:var(--mint); box-shadow:0 0 8px var(--mint); }
+    .chip.warn::before { background:var(--yellow); }
+    .chip.error::before { background:var(--red); }
+    .shell { display:grid; grid-template-columns:190px minmax(0,1fr) 270px; min-height:0; }
+    .nav { padding:12px; background:var(--surface); border-right:1px solid var(--line); }
+    .nav-label { margin:0 0 8px; color:var(--muted); font-size:10px; letter-spacing:.12em; text-transform:uppercase; }
+    .nav button { width:100%; margin-bottom:5px; text-align:left; background:transparent; border-color:transparent; color:var(--muted); }
+    .nav button:hover,.nav button.active { color:var(--mint); border-color:rgba(0,255,209,.32); background:rgba(0,255,209,.06); }
+    .nav .nav-key { float:right; color:var(--periwinkle); font-size:10px; }
+    .main { min-width:0; overflow:auto; padding:14px; background:linear-gradient(135deg, rgba(51,199,255,.035), transparent 40%); }
+    .view { display:none; max-width:1500px; margin:0 auto; }
+    .view.active { display:block; }
+    .view-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:13px; }
+    .view-heading p { margin:3px 0 0; color:var(--muted); }
+    .panel { min-width:0; border:1px solid var(--line); border-radius:7px; padding:12px; background:var(--surface); box-shadow:0 12px 24px rgba(0,0,0,.12); }
+    .panel.subtle { background:rgba(29,37,56,.56); }
+    .grid { display:grid; gap:12px; }
+    .metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .metric { min-height:86px; border-left:3px solid var(--periwinkle); }
+    .metric:nth-child(2n) { border-left-color:var(--cyan); }
+    .metric:nth-child(3n) { border-left-color:var(--mint); }
+    .metric-label { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; }
+    .metric-value { display:block; overflow-wrap:anywhere; margin-top:8px; color:var(--text); font-size:20px; font-weight:700; }
+    .metric-detail { display:block; overflow-wrap:anywhere; margin-top:4px; color:var(--muted); font-size:11px; }
+    .metaphor-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:12px; }
+    .metaphor { min-height:126px; border-top:2px solid var(--periwinkle); }
+    .metaphor:nth-child(2n) { border-top-color:var(--cyan); }
+    .metaphor:nth-child(3n) { border-top-color:var(--mint); }
+    .metaphor p { margin:0; color:var(--muted); }
+    .metaphor strong { display:block; margin:8px 0 4px; overflow-wrap:anywhere; color:var(--text); }
+    .two-col { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+    .three-col { display:grid; grid-template-columns:220px minmax(230px,1fr) minmax(300px,1.25fr); gap:12px; min-height:430px; }
+    .workspaces { display:flex; flex-direction:column; gap:6px; }
+    .workspace-button { width:100%; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .workspace-button small { display:block; overflow:hidden; text-overflow:ellipsis; color:var(--muted); }
+    .tree-pane,.file-pane { min-height:400px; overflow:auto; }
+    .tree-pane ul { padding-left:15px; margin:0; list-style:none; }
+    .tree-pane li { margin:3px 0; }
+    .tree-pane details { margin-left:4px; }
+    summary { cursor:pointer; color:var(--cyan); }
+    .file { cursor:pointer; color:var(--text); }
+    .file:hover { color:var(--mint); }
+    .empty { color:var(--muted); padding:12px 0; }
+    .row { display:grid; gap:6px; margin-bottom:10px; }
+    .actions { display:flex; flex-wrap:wrap; gap:7px; }
+    .result { margin-top:12px; }
+    .notice { color:var(--muted); border-left:2px solid var(--yellow); padding-left:8px; }
+    .error { color:var(--red); }
+    .inspector { min-width:0; padding:12px; border-left:1px solid var(--line); background:var(--surface); overflow:auto; }
+    .inspector dl { margin:0; }
+    .inspector dt { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+    .inspector dd { margin:2px 0 10px; overflow-wrap:anywhere; color:var(--text); }
+    .rule { border:0; border-top:1px solid var(--line); margin:12px 0; }
+    .workbench { display:grid; grid-template-columns:190px minmax(0,1fr); border-top:1px solid var(--line); background:var(--surface); }
+    .workbench-title { padding:10px 14px; color:var(--mint); border-right:1px solid var(--line); font-size:12px; font-weight:bold; }
+    .workbench-main { padding:8px 12px; }
+    .cli-form { display:flex; gap:8px; }
+    .cli-form input { min-width:0; }
+    .cli-output { margin-top:8px; max-height:150px; }
+    .cli-help { margin:6px 0 0; color:var(--muted); font-size:11px; }
+    .hidden { display:none !important; }
+    .tag { color:var(--mint); }
+    .status-error { color:var(--red); }
+    @media (max-width:1050px) { .shell { grid-template-columns:170px minmax(0,1fr); } .inspector { display:none; } .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .metaphor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .workbench { grid-template-columns:170px minmax(0,1fr); } }
+    @media (max-width:720px) { .topbar { align-items:flex-start; } .status-rail { margin-left:0; justify-content:flex-start; } .shell { grid-template-columns:1fr; } .nav { display:flex; gap:4px; overflow:auto; border-right:0; border-bottom:1px solid var(--line); padding:7px; } .nav-label { display:none; } .nav button { width:auto; flex:0 0 auto; margin:0; } .nav .nav-key { display:none; } .metrics,.two-col,.three-col,.metaphor-grid { grid-template-columns:1fr; } .tree-pane,.file-pane { min-height:220px; } .workbench { grid-template-columns:1fr; } .workbench-title { border-right:0; border-bottom:1px solid var(--line); } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Flatten Workspace Studio</h1>
-    <p>
-      HTMX control surface for <code>flatten-workspace/v1</code>, build-ledger mutations, receipts and checkpoints.
-    </p>
-  </header>
-
-  <main>
-    {{if .Error}}
-      <div class="panel error">{{.Error}}</div>
-    {{end}}
-
-    <div class="panel">
-      <h2>Import ZIP</h2>
-
-      <form
-        hx-post="/ui/workspaces/from-zip"
-        hx-target="#workspace"
-        hx-swap="innerHTML"
-        hx-encoding="multipart/form-data"
-      >
-        <div class="row">
-          <input type="file" name="file" accept=".zip">
-        </div>
-
-        <button>Upload ZIP</button>
-      </form>
-    </div>
-
-    <div class="panel">
-      <h2>Import Envelope</h2>
-      <form hx-post="/ui/workspaces/from-envelope" hx-target="#workspace" hx-swap="innerHTML">
-        <div class="row">
-          <textarea name="envelope" placeholder="Paste flatten-workspace/v1 JSON or YAML envelope"></textarea>
-        </div>
-        <button>Import envelope</button>
-      </form>
-    </div>
-
-    <div class="panel">
-      <h2>Global verification</h2>
-      <button hx-get="/ui/ledger/verify" hx-target="#global-result" hx-swap="innerHTML">Verify event hash chain</button>
-      <button hx-get="/ui/receipts/verify" hx-target="#global-result" hx-swap="innerHTML">Verify receipt hash chain</button>
-      <div id="global-result"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Snapshot verification</h2>
-      <form hx-post="/ui/snapshots/verify" hx-target="#global-result" hx-swap="innerHTML" hx-encoding="multipart/form-data">
-        <input type="file" name="file" accept=".zip">
-        <button>Verify snapshot</button>
-      </form>
-    </div>
-
-    <div class="panel">
-      <h2>Workspaces</h2>
-
-      <div class="workspace-list">
-        {{range .Workspaces}}
-          <button
-            hx-get="/ui/workspaces/{{.ID}}"
-            hx-target="#workspace"
-            hx-swap="innerHTML"
-          >
-            {{.ID}}
-          </button>
-        {{else}}
-          No workspaces loaded.
-        {{end}}
+  <div class="app">
+    <header class="topbar">
+      <img class="brand-image" src="/assets/brand/cann-o-call-brand-source.png" alt="Cann-o-Call Actor Runtime mark">
+      <div class="brand-copy"><h1>Flatten Workspace Studio</h1><p>Cann-o-Call Actor Runtime · bounded operator control plane</p></div>
+      <div class="status-rail" aria-label="Current runtime status">
+        <span id="health-chip" class="chip warn">Health: loading</span>
+        <span id="ledger-chip" class="chip warn">Ledger: loading</span>
+        <span id="replay-chip" class="chip warn">Replay: loading</span>
+        <span id="actor-chip" class="chip warn">Actors: loading</span>
+        <span id="task-chip" class="chip warn">Tasks: loading</span>
+        <span id="workspace-chip" class="chip warn">Workspaces: loading</span>
       </div>
+    </header>
+
+    <div class="shell">
+      <nav class="nav" aria-label="Studio views">
+        <p class="nav-label">Control planes</p>
+        <button class="active" data-tab="overview">Overview <span class="nav-key">01</span></button>
+        <button data-tab="ranger">Ranger <span class="nav-key">02</span></button>
+        <button data-tab="monitor">Monitor <span class="nav-key">03</span></button>
+        <button data-tab="workspace">Workspace <span class="nav-key">04</span></button>
+        <button data-tab="actors">Actors / Graph <span class="nav-key">05</span></button>
+        <button data-tab="ledger">Ledger / Receipts <span class="nav-key">06</span></button>
+      </nav>
+
+      <main class="main">
+        {{if .Error}}<div class="panel error">{{.Error}}</div>{{end}}
+
+        <section class="view active" data-view="overview">
+          <div class="view-heading"><div><h2>Overview · machine model</h2><p>Current read-only runtime projection from <code>/api/status</code>, <code>/api/ledger/status</code>, and <code>/api/tasks</code>. The Studio labels only backed machine concepts; unavailable topology and event detail remain unavailable.</p></div><button type="button" data-refresh-status>Refresh snapshot</button></div>
+          <div class="grid metrics">
+            <article class="panel metric"><span class="metric-label">Canvas · graph nodes / edges</span><strong class="metric-value" data-status="graph">N/A</strong><span class="metric-detail">active workspace/machine graph aggregate</span></article>
+            <article class="panel metric"><span class="metric-label">History · ledger sequence</span><strong class="metric-value" data-status="ledger_sequence">N/A</strong><span class="metric-detail">head: <span data-status="head_event">N/A</span></span></article>
+            <article class="panel metric"><span class="metric-label">Progress · active actors</span><strong class="metric-value" data-status="actors">N/A</strong><span class="metric-detail">local bounded lifecycle</span></article>
+            <article class="panel metric"><span class="metric-label">Progress · registered tasks</span><strong class="metric-value" data-status="task_count">N/A</strong><span class="metric-detail" data-status="task_statuses">N/A</span></article>
+          </div>
+          <div class="two-col" style="margin-top:12px">
+            <article class="panel"><h3>Ledger checkpoint</h3><dl><dt>Verification</dt><dd data-status="ledger_verification">N/A</dd><dt>Checkpoint</dt><dd data-status="checkpoint">N/A</dd><dt>Head event</dt><dd data-status="head_event">N/A</dd></dl></article>
+            <article class="panel"><h3>Selection projection</h3><dl><dt>Candidates considered</dt><dd data-status="candidates_considered">N/A</dd><dt>Selected</dt><dd data-status="candidates_selected">N/A</dd><dt>Coverage</dt><dd data-status="coverage">N/A</dd></dl></article>
+          </div>
+          <div class="metaphor-grid" aria-label="Architecture v0.1 machine concepts">
+            <article class="panel metaphor"><h3>Canvas</h3><p>Active workspace / machine graph.</p><strong data-status="canvas_workspace">No workspace selected</strong><span class="metric-detail">Machine graph aggregate: <span data-status="graph">N/A</span> (no per-workspace graph API)</span></article>
+            <article class="panel metaphor"><h3>Mask / selection</h3><p>Bounded context scope, not hidden inference.</p><strong><span data-status="candidates_selected">N/A</span> selected / <span data-status="candidates_considered">N/A</span> considered</strong><span class="metric-detail">Coverage: <span data-status="coverage">N/A</span></span></article>
+            <article class="panel metaphor"><h3>History</h3><p>Durable ledger and replay evidence.</p><strong>Sequence <span data-status="ledger_sequence">N/A</span></strong><span class="metric-detail">Head ID: <span data-status="head_event">N/A</span></span></article>
+            <article class="panel metaphor"><h3>Variants</h3><p>Build / solution branches.</p><strong>Unavailable</strong><span class="metric-detail">No variant or branch-topology API is exposed.</span></article>
+            <article class="panel metaphor"><h3>Progress</h3><p>Bounded actor execution and task registry.</p><strong><span data-status="actors">N/A</span> active actors · <span data-status="task_count">N/A</span> tasks</strong><span class="metric-detail" data-status="task_statuses">N/A</span></article>
+            <article class="panel metaphor"><h3>Export</h3><p>Snapshot / build-package / ledger snapshot.</p><strong>Workspace snapshot and reports are controlled</strong><span class="metric-detail">Build-package and ledger-snapshot exports: unavailable. Snapshot and verification reports require a selected workspace.</span></article>
+          </div>
+          <p id="status-error" class="notice hidden" role="status"></p>
+        </section>
+
+        <section class="view" data-view="ranger">
+          <div class="view-heading"><div><h2>Ranger</h2><p>Workspace, tree, and file panes. This navigator uses only the existing workspace/tree/file HTMX routes.</p></div></div>
+          <div class="three-col">
+            <article class="panel"><h3>Workspaces</h3><div class="workspaces">
+              {{range .Workspaces}}
+                <button class="workspace-button" hx-get="/ui/workspaces/{{.ID}}/tree" hx-target="#ranger-tree" hx-swap="innerHTML" onclick="selectWorkspace({{printf "%q" .ID}}, {{printf "%q" .Format}}, {{.FileCount}}, {{.DirectoryCount}})">{{.ID}}<small>{{.FileCount}} files · {{.DirectoryCount}} directories</small></button>
+              {{else}}<p class="empty">No workspace loaded.</p>{{end}}
+            </div></article>
+            <article class="panel tree-pane"><h3>Tree</h3><div id="ranger-tree" class="empty">Select a workspace to load its existing tree.</div></article>
+            <article class="panel file-pane"><h3>File inspector</h3><div id="fileViewer" class="empty">Select a file from the workspace tree.</div></article>
+          </div>
+        </section>
+
+        <section class="view" data-view="monitor">
+          <div class="view-heading"><div><h2>btop · current observability</h2><p>Current snapshots only: ledger, active actors, and bounded task registry. No time-series, CPU, throughput, or event stream is inferred.</p></div><button type="button" data-refresh-status>Refresh snapshot</button></div>
+          <div class="grid metrics">
+            <article class="panel metric"><span class="metric-label">Ledger sequence</span><strong class="metric-value" data-status="ledger_sequence">N/A</strong><span class="metric-detail">from current ledger status</span></article>
+            <article class="panel metric"><span class="metric-label">Ledger head identifier</span><strong class="metric-value" data-status="head_event">N/A</strong><span class="metric-detail">current head event ID</span></article>
+            <article class="panel metric"><span class="metric-label">Active actors</span><strong class="metric-value" data-status="actors">N/A</strong><span class="metric-detail">queued: <span data-status="actor_queue">N/A</span></span></article>
+            <article class="panel metric"><span class="metric-label">Task registry</span><strong class="metric-value" data-status="task_count">N/A</strong><span class="metric-detail" data-status="task_statuses">N/A</span></article>
+          </div>
+          <div class="two-col" style="margin-top:12px">
+            <article class="panel"><h3>Status snapshot</h3><pre id="status-snapshot">Loading /api/status…</pre></article>
+            <article class="panel"><h3>Ledger snapshot</h3><pre id="ledger-snapshot">Loading /api/ledger/status…</pre></article>
+          </div>
+          <article class="panel" style="margin-top:12px"><h3>Progress · bounded task execution</h3><pre id="task-snapshot">Loading /api/tasks…</pre></article>
+          <p id="monitor-stamp" class="notice">Waiting for a current snapshot.</p>
+        </section>
+
+        <section class="view" data-view="workspace">
+          <div class="view-heading"><div><h2>Workspace · Canvas / Export</h2><p>Imports and controlled mutations retain the server’s existing authority, confirmation, and receipt checks. Workspace snapshot and verification-report downloads are controlled exports.</p></div></div>
+          <div class="two-col">
+            <article class="panel"><h3>Import ZIP</h3><form hx-post="/ui/workspaces/from-zip" hx-target="#workspace" hx-swap="innerHTML" hx-encoding="multipart/form-data"><div class="row"><input type="file" name="file" accept=".zip"></div><button>Upload ZIP</button></form></article>
+            <article class="panel"><h3>Import envelope</h3><form hx-post="/ui/workspaces/from-envelope" hx-target="#workspace" hx-swap="innerHTML"><div class="row"><textarea name="envelope" placeholder="Paste flatten-workspace/v1 JSON or YAML envelope"></textarea></div><button>Import envelope</button></form></article>
+          </div>
+          <article class="panel" style="margin-top:12px"><h3>Loaded workspaces</h3><div class="workspaces" style="flex-direction:row;flex-wrap:wrap">{{range .Workspaces}}<button hx-get="/ui/workspaces/{{.ID}}" hx-target="#workspace" hx-swap="innerHTML" onclick="selectWorkspace({{printf "%q" .ID}}, {{printf "%q" .Format}}, {{.FileCount}}, {{.DirectoryCount}})">{{.ID}}</button>{{else}}<span class="empty">No workspace loaded.</span>{{end}}</div></article>
+          <p class="notice" style="margin-top:12px">Variants / build-solution branch topology: unavailable — existing build-ledger controls record documents and evidence, not branch topology.</p>
+          <div id="workspace" style="margin-top:12px">{{template "workspace" .}}</div>
+        </section>
+
+        <section class="view" data-view="actors">
+          <div class="view-heading"><div><h2>Progress · Actors / Graph topology</h2><p>Actor descriptors are extant local bounded-execution data. No graph-topology API is exposed, so topology detail is unavailable.</p></div></div>
+          <div class="two-col">
+            <article class="panel"><h3>Workspace actor views</h3><div class="workspaces">{{range .Workspaces}}<button class="workspace-button" hx-get="/ui/workspaces/{{.ID}}/actors" hx-target="#actor-list" hx-swap="innerHTML" onclick="selectWorkspace({{printf "%q" .ID}}, {{printf "%q" .Format}}, {{.FileCount}}, {{.DirectoryCount}})">{{.ID}}<small>Load recorded activations</small></button>{{else}}<p class="empty">No workspace loaded.</p>{{end}}</div><hr class="rule"><p class="notice">Topology edges and event-level detail: N/A — not supplied by an existing API.</p></article>
+            <article class="panel"><h3>Actor activations</h3><div id="actor-list" class="empty">Select a workspace to request existing actor descriptors.</div></article>
+          </div>
+        </section>
+
+        <section class="view" data-view="ledger">
+          <div class="view-heading"><div><h2>History · Ledger / Receipts / Verification</h2><p>Durable ledger and replay evidence are verified through existing safe routes. Event-stream detail is unavailable and is not simulated.</p></div></div>
+          <div class="two-col">
+            <article class="panel"><h3>Global verification</h3><div class="actions"><button hx-get="/ui/ledger/verify" hx-target="#verification-result" hx-swap="innerHTML">Verify event hash chain</button><button hx-get="/ui/receipts/verify" hx-target="#verification-result" hx-swap="innerHTML">Verify receipt hash chain</button></div><div id="verification-result" class="result">No verification requested.</div></article>
+            <article class="panel"><h3>Snapshot verification</h3><form hx-post="/ui/snapshots/verify" hx-target="#verification-result" hx-swap="innerHTML" hx-encoding="multipart/form-data"><div class="row"><input type="file" name="file" accept=".zip"></div><button>Verify snapshot</button></form><hr class="rule"><p class="notice">Verification reads current evidence; it does not advance semantic authority.</p></article>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector" aria-label="Inspector">
+        <h2>Inspector</h2>
+        <p class="nav-label">Provenance · selected workspace</p>
+        <dl><dt>ID</dt><dd id="inspect-id">None</dd><dt>Format</dt><dd id="inspect-format">N/A</dd><dt>Files / directories</dt><dd id="inspect-counts">N/A</dd></dl>
+        <hr class="rule">
+        <p class="nav-label">State · current snapshot</p>
+        <dl><dt>Active actors</dt><dd data-status="actors">N/A</dd><dt>Registered tasks</dt><dd data-status="task_count">N/A</dd><dt>Task states</dt><dd data-status="task_statuses">N/A</dd></dl>
+        <hr class="rule">
+        <p class="nav-label">Evidence · history</p>
+        <dl><dt>Ledger sequence</dt><dd data-status="ledger_sequence">N/A</dd><dt>Head event ID</dt><dd data-status="head_event">N/A</dd><dt>Head hash</dt><dd data-status="head_hash">N/A</dd><dt>Verification</dt><dd data-status="ledger_verification">N/A</dd></dl>
+        <hr class="rule">
+        <p class="nav-label">Authority boundary</p>
+        <dl><dt>Semantic authority</dt><dd>Go admission</dd><dt>Durable evidence</dt><dd>Rust ledger sidecar</dd><dt>Actors</dt><dd>Local bounded lifecycle</dd><dt>Topology / variants</dt><dd>N/A — no API</dd></dl>
+        <hr class="rule">
+        <p id="inspector-status" class="notice">Awaiting current status snapshot.</p>
+      </aside>
     </div>
 
-    <div id="workspace">
-      {{template "workspace" .}}
-    </div>
-  </main>
+    <footer class="workbench" aria-label="Bounded CLI workbench">
+      <div class="workbench-title">CLI · bounded command plane<br><span style="color:var(--muted);font-weight:normal">fixed read-only allowlist</span></div>
+      <div class="workbench-main">
+        <form id="cli-form" class="cli-form"><input id="cli-input" type="text" autocomplete="off" spellcheck="false" placeholder="help"><button>Run</button></form>
+        <p class="cli-help"><code>help</code> · <code>health</code> · <code>status</code> · <code>ledger status</code> · <code>ledger verify</code> · <code>tasks</code> · <code>actors &lt;workspace-id&gt;</code> · <code>replay verify &lt;workspace-id&gt;</code></p>
+        <pre id="cli-output" class="cli-output">Bounded workbench ready. It never evaluates, spawns, shells, or accepts arbitrary routes.</pre>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+      const na = "N/A";
+      const text = (value) => value === undefined || value === null || value === "" ? na : String(value);
+      const path = (object, keys) => keys.reduce((value, key) => value && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined, object);
+      const setAll = (name, value) => document.querySelectorAll("[data-status='" + name + "']").forEach((node) => { node.textContent = text(value); });
+      const chip = (id, label, state) => { const node = document.getElementById(id); node.textContent = label; node.className = "chip " + state; };
+      const pretty = (value) => JSON.stringify(value, null, 2);
+      const shortID = (value) => {
+        const identifier = text(value);
+        return identifier === na || identifier.length <= 24 ? identifier : identifier.slice(0, 14) + "…" + identifier.slice(-8);
+      };
+
+      function taskSummary(tasks) {
+        const states = {};
+        tasks.forEach((task) => { const state = text(task.status); states[state] = (states[state] || 0) + 1; });
+        const detail = Object.keys(states).sort().map((state) => state + " " + states[state]).join(" · ");
+        return { detail: detail || "No registered tasks", failed: (states.failed || 0) + (states.rejected || 0), running: (states.running || 0) + (states.pending || 0) };
+      }
+
+      window.selectWorkspace = function (id, format, files, directories) {
+        document.getElementById("inspect-id").textContent = id || "None";
+        document.getElementById("inspect-format").textContent = format || na;
+        document.getElementById("inspect-counts").textContent = text(files) + " / " + text(directories);
+        setAll("canvas_workspace", id || "No workspace selected");
+      };
+
+      async function fetchJSON(route) {
+        const response = await fetch(route, { headers: { "Accept": "application/json" }, credentials: "same-origin" });
+        if (!response.ok) throw new Error(route + " returned HTTP " + response.status);
+        return response.json();
+      }
+
+      function statusValues(status, ledger, tasks) {
+        const graph = status.graph || {};
+        const actor = status.actor || {};
+        const context = status.context || {};
+        const ledgerData = status.ledger || ledger || {};
+        const taskState = taskSummary(tasks);
+        const headEvent = status.head_event_id || ledgerData.head_event_id;
+        const headHash = status.head_hash || ledgerData.head_hash;
+        setAll("event_count", status.event_count);
+        setAll("workspaces", status.workspaces);
+        setAll("graph", text(graph.node_count) + " / " + text(graph.edge_count));
+        setAll("actors", actor.active);
+        setAll("ledger_sequence", ledgerData.current_sequence);
+        setAll("ledger_verification", ledgerData.verification_status);
+        setAll("actor_queue", actor.queued);
+        setAll("sources", graph.source_count);
+        setAll("candidates_considered", context.candidates_considered);
+        setAll("candidates_selected", context.candidates_selected);
+        setAll("coverage", context.coverage);
+        setAll("head_event", headEvent);
+        setAll("head_hash", headHash);
+        setAll("task_count", tasks.length);
+        setAll("task_statuses", taskState.detail);
+        const checkpoint = status.checkpoint || {};
+        setAll("checkpoint", checkpoint.present ? "present" + (checkpoint.sequence !== undefined ? " · seq " + checkpoint.sequence : "") + (checkpoint.age ? " · " + checkpoint.age : "") : "absent");
+        return { actor: actor, ledgerData: ledgerData, headEvent: headEvent, taskState: taskState };
+      }
+
+      async function refreshStatus() {
+        const error = document.getElementById("status-error");
+        const monitor = document.getElementById("monitor-stamp");
+        try {
+          const [health, status, ledger, taskResponse] = await Promise.all([fetchJSON("/api/health"), fetchJSON("/api/status"), fetchJSON("/api/ledger/status"), fetchJSON("/api/tasks")]);
+          const tasks = Array.isArray(taskResponse) ? taskResponse : [];
+          const healthOK = health.status === "ok";
+          const ledgerState = path(status, ["ledger", "verification_status"]);
+          const values = statusValues(status, ledger, tasks);
+          chip("health-chip", "Health: " + (healthOK ? "ok" : text(health.status)), healthOK ? "ok" : "warn");
+          chip("ledger-chip", "Ledger: seq " + text(values.ledgerData.current_sequence) + " · " + shortID(values.headEvent), ledgerState === "ok" ? "ok" : ledgerState === "failed" || ledgerState === "error" ? "error" : "warn");
+          const replay = status.replay_status;
+          chip("replay-chip", "Replay: " + text(replay), replay === "ok" ? "ok" : replay === "corrupt" ? "error" : "warn");
+          chip("actor-chip", "Actors: active " + text(values.actor.active), "ok");
+          chip("task-chip", "Tasks: " + tasks.length + " · " + values.taskState.detail, values.taskState.failed > 0 ? "error" : values.taskState.running > 0 ? "warn" : "ok");
+          chip("workspace-chip", "Workspaces: " + text(status.workspaces), "ok");
+          document.getElementById("status-snapshot").textContent = pretty(status);
+          document.getElementById("ledger-snapshot").textContent = pretty(ledger);
+          document.getElementById("task-snapshot").textContent = pretty(tasks);
+          const stamp = "Current snapshot read " + new Date().toLocaleTimeString() + ".";
+          monitor.textContent = stamp;
+          document.getElementById("inspector-status").textContent = stamp;
+          error.classList.add("hidden");
+        } catch (err) {
+          const message = "Runtime data unavailable: " + err.message;
+          chip("health-chip", "Health: unavailable", "error");
+          chip("ledger-chip", "Ledger: unavailable", "error");
+          chip("replay-chip", "Replay: unavailable", "error");
+          chip("actor-chip", "Actors: unavailable", "error");
+          chip("task-chip", "Tasks: unavailable", "error");
+          chip("workspace-chip", "Workspaces: unavailable", "error");
+          error.textContent = message;
+          error.classList.remove("hidden");
+          monitor.textContent = message;
+          document.getElementById("inspector-status").textContent = message;
+          document.getElementById("status-snapshot").textContent = message;
+          document.getElementById("ledger-snapshot").textContent = message;
+          document.getElementById("task-snapshot").textContent = message;
+        }
+      }
+
+      document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
+        const tab = button.getAttribute("data-tab");
+        document.querySelectorAll("[data-tab]").forEach((node) => node.classList.toggle("active", node === button));
+        document.querySelectorAll("[data-view]").forEach((node) => node.classList.toggle("active", node.getAttribute("data-view") === tab));
+      }));
+      document.querySelectorAll("[data-refresh-status]").forEach((button) => button.addEventListener("click", refreshStatus));
+
+      const allowlistedCommands = [
+        { match: /^help$/i, route: null },
+        { match: /^health$/i, route: () => "/api/health" },
+        { match: /^status$/i, route: () => "/api/status" },
+        { match: /^ledger status$/i, route: () => "/api/ledger/status" },
+        { match: /^ledger verify$/i, route: () => "/api/ledger/verify" },
+        { match: /^tasks$/i, route: () => "/api/tasks" },
+        { match: /^actors ([^\s/]+)$/i, route: (match) => "/api/workspaces/" + encodeURIComponent(match[1]) + "/actors" },
+        { match: /^replay verify ([^\s/]+)$/i, route: (match) => "/api/workspaces/" + encodeURIComponent(match[1]) + "/replay/verify" }
+      ];
+      const cli = document.getElementById("cli-form");
+      cli.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const raw = document.getElementById("cli-input").value.trim();
+        const output = document.getElementById("cli-output");
+        const entry = allowlistedCommands.map((command) => ({ command: command, match: raw.match(command.match) })).find((item) => item.match);
+        if (!entry) { output.textContent = "Rejected: command is outside the fixed read-only allowlist. Run help."; return; }
+        if (!entry.command.route) { output.textContent = "Allowed commands:\nhealth\nstatus\nledger status\nledger verify\ntasks\nactors <workspace-id>\nreplay verify <workspace-id>"; return; }
+        const route = entry.command.route(entry.match);
+        output.textContent = "GET " + route + " …";
+        try { output.textContent = pretty(await fetchJSON(route)); } catch (err) { output.textContent = "Unavailable: " + err.message; }
+      });
+      refreshStatus();
+    }());
+  </script>
 </body>
 </html>
 {{end}}
 
 {{define "workspace"}}
   {{if .Workspace}}
-    <div class="panel">
-      <h2>Workspace</h2>
-
-      <div class="grid">
-        <div>ID: {{.Workspace.ID}}</div>
-        <div>Format: {{.Workspace.Format}}</div>
-        <div>Mode: {{.Workspace.Mode}}</div>
-        <div>Files: {{.Workspace.FileCount}}</div>
-        <div>Directories: {{.Workspace.DirectoryCount}}</div>
-        <div>Manifest checked: {{.Workspace.ManifestChecked}}</div>
-        <div>Created: {{.Workspace.CreatedAt}}</div>
-        <div>Quarantined: {{len .Workspace.Quarantined}}</div>
-        {{if .Binding}}
-          <div>Bound root: {{.Binding.ProjectRoot}} ({{.Binding.Status}})</div>
-        {{else}}
-          <div>Bound root: not bound</div>
-        {{end}}
+    <div class="grid">
+      <article class="panel"><h3>Workspace summary</h3><div class="grid metrics"><div class="metric"><span class="metric-label">ID</span><span class="metric-detail">{{.Workspace.ID}}</span></div><div class="metric"><span class="metric-label">Format / mode</span><span class="metric-detail">{{.Workspace.Format}} · {{.Workspace.Mode}}</span></div><div class="metric"><span class="metric-label">Files / directories</span><span class="metric-detail">{{.Workspace.FileCount}} / {{.Workspace.DirectoryCount}}</span></div><div class="metric"><span class="metric-label">Manifest / quarantine</span><span class="metric-detail">{{.Workspace.ManifestChecked}} / {{len .Workspace.Quarantined}}</span></div></div><p class="notice" style="margin-top:12px">Created {{.Workspace.CreatedAt}}. {{if .Binding}}Bound root: {{.Binding.ProjectRoot}} ({{.Binding.Status}}).{{else}}Workspace is not bound.{{end}}</p></article>
+      <div class="two-col">
+        <article class="panel"><h3>Materialize</h3><form hx-post="/ui/workspaces/{{.Workspace.ID}}/materialize" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="root" placeholder="materialization root"></div><label><input type="checkbox" name="confirm" value="true"> confirm materialization</label><p><button>Materialize</button></p></form></article>
+        <article class="panel"><h3>Bind project root</h3><form hx-post="/ui/workspaces/{{.Workspace.ID}}/bind" hx-target="#workspace" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="project_root" placeholder="/absolute/path/to/project-root"></div><label><input type="checkbox" name="confirm" value="true"> confirm binding</label><br><label><input type="checkbox" name="verify_files" value="true"> verify workspace files</label><br><label><input type="checkbox" name="force" value="true"> force despite warnings</label><p><button>Bind workspace</button></p></form></article>
       </div>
+      <article class="panel"><h3>Replay / runtime / export</h3><div class="actions"><button hx-get="/ui/workspaces/{{.Workspace.ID}}/replay/verify" hx-target="#result" hx-swap="innerHTML">Verify replay</button><button hx-get="/ui/workspaces/{{.Workspace.ID}}/quarantine" hx-target="#result" hx-swap="innerHTML">Inspect quarantine</button><button hx-get="/ui/workspaces/{{.Workspace.ID}}/actors" hx-target="#result" hx-swap="innerHTML">Actor activations</button><a class="button" href="/api/workspaces/{{.Workspace.ID}}/snapshot" download>Download snapshot</a><a class="button" href="/api/workspaces/{{.Workspace.ID}}/verification-report?format=json&amp;download=true" download>Verification report JSON</a><a class="button" href="/api/workspaces/{{.Workspace.ID}}/verification-report?format=yaml&amp;download=true" download>Verification report YAML</a></div></article>
+      <article class="panel"><h3>Build ledger</h3>
+        <details open><summary>Append event</summary><form hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/event" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><textarea name="event_json" placeholder='{"event":"manual_note","status":"recorded"}'></textarea></div><button>Append event</button></form></details>
+        <details><summary>Update current state</summary><form hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/state" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><textarea name="state_yaml" placeholder="status: in_progress"></textarea></div><button>Update state</button></form></details>
+        <details><summary>Create run</summary><form hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/run" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><textarea name="document_yaml" placeholder="id: run-example-0001&#10;type: run&#10;status: in_progress"></textarea></div><button>Create run</button></form></details>
+        <details><summary>Create receipt</summary><form hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/receipt" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><textarea name="document_yaml" placeholder="id: receipt-example-0001&#10;type: receipt&#10;status: delivered"></textarea></div><button>Create receipt</button></form></details>
+        <details><summary>Create verification</summary><form hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/verification" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><textarea name="document_yaml" placeholder="id: verification-example-0001&#10;type: verification&#10;status: verified"></textarea></div><button>Create verification</button></form></details>
+      </article>
+      <div id="result" class="panel result">{{template "result" .}}</div>
     </div>
-
-    <div class="panel">
-      <h2>Materialize</h2>
-
-      <form
-        hx-post="/ui/workspaces/{{.Workspace.ID}}/materialize"
-        hx-target="#result"
-        hx-swap="innerHTML"
-      >
-        <div class="row">
-          <input type="text" name="authority_token" placeholder="Authority token">
-        </div>
-
-        <div class="row">
-          <input type="text" name="root" placeholder="materialization root">
-        </div>
-
-        <div class="row">
-          <label>
-            <input type="checkbox" name="confirm" value="true">
-            confirm materialization
-          </label>
-        </div>
-
-        <button>Materialize</button>
-      </form>
-    </div>
-
-    <div class="panel">
-      <h2>Bind project root</h2>
-      <form hx-post="/ui/workspaces/{{.Workspace.ID}}/bind" hx-target="#workspace" hx-swap="innerHTML">
-        <div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div>
-        <div class="row"><input type="text" name="project_root" placeholder="/absolute/path/to/project-root"></div>
-        <label><input type="checkbox" name="confirm" value="true"> confirm binding</label>
-        <label><input type="checkbox" name="verify_files" value="true"> verify workspace files</label>
-        <label><input type="checkbox" name="force" value="true"> force despite warnings</label>
-        <button>Bind workspace</button>
-      </form>
-    </div>
-
-    <div class="panel">
-      <h2>Replay / runtime</h2>
-      <button hx-get="/ui/workspaces/{{.Workspace.ID}}/replay/verify" hx-target="#result" hx-swap="innerHTML">Verify replay</button>
-      <button hx-get="/ui/workspaces/{{.Workspace.ID}}/quarantine" hx-target="#result" hx-swap="innerHTML">Inspect quarantine</button>
-      <button hx-get="/ui/workspaces/{{.Workspace.ID}}/actors" hx-target="#result" hx-swap="innerHTML">Actor activations</button>
-    </div>
-
-    <div class="panel">
-      <h2>Export</h2>
-      <a class="button" href="/api/workspaces/{{.Workspace.ID}}/snapshot" download>Download snapshot</a>
-      <a class="button" href="/api/workspaces/{{.Workspace.ID}}/verification-report?format=json&download=true" download>Verification report JSON</a>
-      <a class="button" href="/api/workspaces/{{.Workspace.ID}}/verification-report?format=yaml&download=true" download>Verification report YAML</a>
-    </div>
-
-    <div class="panel">
-      <h2>Build Ledger</h2>
-
-      <details open>
-        <summary>Append event</summary>
-
-        <form
-          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/event"
-          hx-target="#result"
-          hx-swap="innerHTML"
-        >
-          <div class="row">
-            <input type="text" name="authority_token" placeholder="Authority token">
-          </div>
-
-          <div class="row">
-            <textarea name="event_json" placeholder='{"event":"manual_note","status":"recorded"}'></textarea>
-          </div>
-
-          <button>Append event</button>
-        </form>
-      </details>
-
-      <details>
-        <summary>Update current state</summary>
-
-        <form
-          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/state"
-          hx-target="#result"
-          hx-swap="innerHTML"
-        >
-          <div class="row">
-            <input type="text" name="authority_token" placeholder="Authority token">
-          </div>
-
-          <div class="row">
-            <textarea name="state_yaml" placeholder="status: in_progress"></textarea>
-          </div>
-
-          <button>Update state</button>
-        </form>
-      </details>
-
-      <details>
-        <summary>Create run</summary>
-
-        <form
-          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/run"
-          hx-target="#result"
-          hx-swap="innerHTML"
-        >
-          <div class="row">
-            <input type="text" name="authority_token" placeholder="Authority token">
-          </div>
-
-          <div class="row">
-            <textarea name="document_yaml" placeholder="id: run-example-0001
-type: run
-status: in_progress"></textarea>
-          </div>
-
-          <button>Create run</button>
-        </form>
-      </details>
-
-      <details>
-        <summary>Create receipt</summary>
-
-        <form
-          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/receipt"
-          hx-target="#result"
-          hx-swap="innerHTML"
-        >
-          <div class="row">
-            <input type="text" name="authority_token" placeholder="Authority token">
-          </div>
-
-          <div class="row">
-            <textarea name="document_yaml" placeholder="id: receipt-example-0001
-type: receipt
-status: delivered"></textarea>
-          </div>
-
-          <button>Create receipt</button>
-        </form>
-      </details>
-
-      <details>
-        <summary>Create verification</summary>
-
-        <form
-          hx-post="/ui/workspaces/{{.Workspace.ID}}/build-ledger/verification"
-          hx-target="#result"
-          hx-swap="innerHTML"
-        >
-          <div class="row">
-            <input type="text" name="authority_token" placeholder="Authority token">
-          </div>
-
-          <div class="row">
-            <textarea name="document_yaml" placeholder="id: verification-example-0001
-type: verification
-status: verified"></textarea>
-          </div>
-
-          <button>Create verification</button>
-        </form>
-      </details>
-    </div>
-
-    <div id="result" class="panel">
-      {{template "result" .}}
-    </div>
-
-    <div class="panel">
-      <h2>Tree</h2>
-      {{template "tree" .Tree}}
-    </div>
-
-    <div class="panel">
-      <h2>File</h2>
-
-      <div id="fileViewer">
-        {{if .File}}
-          {{template "file" .File}}
-        {{else}}
-          Select a file.
-        {{end}}
-      </div>
-    </div>
-  {{else}}
-    <div class="panel">
-      No workspace loaded.
-    </div>
-  {{end}}
+  {{else}}<article class="panel"><p class="empty">Select or import a workspace to access controlled workspace operations.</p></article>{{end}}
 {{end}}
 
-{{define "result"}}
-  {{if .Error}}
-    <pre class="error">{{.Error}}</pre>
-  {{else if .Result}}
-    <pre>{{.Result}}</pre>
-    {{if .ReceiptID}}
-      <button hx-get="/ui/receipts/{{.ReceiptID}}/diff" hx-target="#result" hx-swap="innerHTML">View diff</button>
-    {{end}}
-  {{else}}
-    <pre>No result yet.</pre>
-  {{end}}
-{{end}}
+{{define "result"}}{{if .Error}}<pre class="error">{{.Error}}</pre>{{else if .Result}}<pre>{{.Result}}</pre>{{if .ReceiptID}}<p><button hx-get="/ui/receipts/{{.ReceiptID}}/diff" hx-target="#result" hx-swap="innerHTML">View diff</button></p>{{end}}{{else}}<span class="empty">No result yet.</span>{{end}}{{end}}
 
-{{define "tree"}}
-  <ul>
-    {{range .}}
-      <li>
-        {{if eq .Type "directory"}}
-          <details>
-            <summary>📁 {{.Name}}</summary>
-            {{template "tree" .Children}}
-          </details>
-        {{else}}
-          <span
-            class="file"
-            hx-get="/ui/file?workspace={{.WorkspaceID}}&path={{urlquery .Path}}"
-            hx-target="#fileViewer"
-            hx-swap="innerHTML"
-          >
-            📄 {{.Name}} ({{.Size}} bytes)
-          </span>
-        {{end}}
-      </li>
-    {{end}}
-  </ul>
-{{end}}
+{{define "tree"}}<ul>{{range .}}<li>{{if eq .Type "directory"}}<details><summary>▸ {{.Name}}</summary>{{template "tree" .Children}}</details>{{else}}<span class="file" hx-get="/ui/file?workspace={{.WorkspaceID}}&amp;path={{urlquery .Path}}" hx-target="#fileViewer" hx-swap="innerHTML">• {{.Name}} <small>({{.Size}} bytes)</small></span>{{end}}</li>{{end}}</ul>{{end}}
 
-{{define "file"}}
-  <div>
-    <div>Path: {{.Path}}</div>
-    <div>SHA-256: {{.SHA256}}</div>
-    <div>Encoding: {{.Encoding}}</div>
-    <div>Language: {{.Language}}</div>
-    <div>Verified: {{.Verified}}</div>
-  </div>
+{{define "file"}}<div class="grid"><dl><dt>Path</dt><dd>{{.Path}}</dd><dt>SHA-256</dt><dd>{{.SHA256}}</dd><dt>Encoding</dt><dd>{{.Encoding}}</dd><dt>Language</dt><dd>{{.Language}}</dd><dt>Verified</dt><dd>{{.Verified}}</dd></dl><pre>{{.Content}}</pre></div>{{end}}
 
-  <pre>{{.Content}}</pre>
-{{end}}
-{{define "quarantine"}}
-  <div>
-    <div>Workspace: {{.WorkspaceID}}</div>
-    <div>Quarantined entries: {{.Count}}</div>
-    <div>Unsafe entry count: {{.UnsafeEntryCount}}</div>
-  </div>
+{{define "quarantine"}}<div class="grid"><div><strong>Workspace:</strong> {{.WorkspaceID}}</div><div><strong>Quarantined entries:</strong> {{.Count}}</div><div><strong>Unsafe entry count:</strong> {{.UnsafeEntryCount}}</div></div><h3>Entries</h3><ul>{{range .Items}}<li>{{.}}</li>{{else}}<li>No quarantined entries.</li>{{end}}</ul>{{if .Blobs}}<h3>Quarantined blobs</h3><ul>{{range .Blobs}}<li><strong>{{.OriginalPath}}</strong><br>Status: {{.Status}} · Safe path: {{.SafePath}} · SHA-256: {{.SHA256}} · Size: {{.Size}}{{if eq .Status "quarantined"}}<form hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/admit" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="target_path" value="{{.SafePath}}"></div><button>Admit</button></form><form hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/reject" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="reason" placeholder="reason"></div><button>Reject</button></form>{{end}}</li>{{end}}</ul>{{end}}{{if .Decisions}}<h3>Decisions</h3><ul>{{range .Decisions}}<li>{{.Item}} → {{.Decision}}{{if .Reason}} ({{.Reason}}){{end}}</li>{{end}}</ul>{{end}}<h3>Record textual decision</h3><form hx-post="/ui/workspaces/{{.WorkspaceID}}/quarantine/decisions" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="item" placeholder="quarantined path"></div><div class="row"><select name="decision"><option value="approve">approve</option><option value="reject">reject</option></select></div><div class="row"><input type="text" name="reason" placeholder="reason"></div><button>Record decision</button></form>{{end}}
 
-  <h3>Entries</h3>
+{{define "actors"}}<ul>{{range .}}<li><strong>{{.ID}}</strong> [{{.Status}}]<br>Action: {{.TriggerAction}}<br>Path: {{.Path}}<br>Lineage: {{.LineageID}}<br>Depth: {{.Depth}} · Budget: {{.Budget}}<br>Expires: {{.ExpiresAt}}</li>{{else}}<li class="empty">No actor activations.</li>{{end}}</ul>{{end}}
 
-  <ul>
-    {{range .Items}}
-      <li>{{.}}</li>
-    {{else}}
-      <li>No quarantined entries.</li>
-    {{end}}
-  </ul>
-
-  {{if .Blobs}}
-    <h3>Quarantined blobs</h3>
-
-    <ul>
-      {{range .Blobs}}
-        <li>
-          <div><strong>{{.OriginalPath}}</strong></div>
-          <div>Status: {{.Status}}</div>
-          <div>Safe path: {{.SafePath}}</div>
-          <div>SHA-256: {{.SHA256}}</div>
-          <div>Size: {{.Size}}</div>
-
-          {{if eq .Status "quarantined"}}
-            <form
-              hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/admit"
-              hx-target="#result"
-              hx-swap="innerHTML"
-            >
-              <div class="row">
-                <input type="text" name="authority_token" placeholder="Authority token">
-              </div>
-
-              <div class="row">
-                <input type="text" name="target_path" value="{{.SafePath}}">
-              </div>
-
-              <button>Admit</button>
-            </form>
-
-            <form
-              hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/reject"
-              hx-target="#result"
-              hx-swap="innerHTML"
-            >
-              <div class="row">
-                <input type="text" name="authority_token" placeholder="Authority token">
-              </div>
-
-              <div class="row">
-                <input type="text" name="reason" placeholder="reason">
-              </div>
-
-              <button>Reject</button>
-            </form>
-          {{end}}
-        </li>
-      {{end}}
-    </ul>
-  {{end}}
-
-  {{if .Decisions}}
-    <h3>Decisions</h3>
-
-    <ul>
-      {{range .Decisions}}
-        <li>
-          {{.Item}} → {{.Decision}}
-          {{if .Reason}}
-            ({{.Reason}})
-          {{end}}
-        </li>
-      {{end}}
-    </ul>
-  {{end}}
-
-  <h3>Record textual decision</h3>
-
-  <form
-    hx-post="/ui/workspaces/{{.WorkspaceID}}/quarantine/decisions"
-    hx-target="#result"
-    hx-swap="innerHTML"
-  >
-    <div class="row">
-      <input type="text" name="authority_token" placeholder="Authority token">
-    </div>
-
-    <div class="row">
-      <input type="text" name="item" placeholder="quarantined path">
-    </div>
-
-    <div class="row">
-      <select name="decision">
-        <option value="approve">approve</option>
-        <option value="reject">reject</option>
-      </select>
-    </div>
-
-    <div class="row">
-      <input type="text" name="reason" placeholder="reason">
-    </div>
-
-    <button>Record decision</button>
-  </form>
-{{end}}
-
-{{define "actors"}}
-  <ul>
-    {{range .}}
-      <li>
-        <div><strong>{{.ID}}</strong> [{{.Status}}]</div>
-        <div>Action: {{.TriggerAction}}</div>
-        <div>Path: {{.Path}}</div>
-        <div>Lineage: {{.LineageID}}</div>
-        <div>Depth: {{.Depth}}</div>
-        <div>Budget: {{.Budget}}</div>
-        <div>Expires: {{.ExpiresAt}}</div>
-      </li>
-    {{else}}
-      <li>No actor activations.</li>
-    {{end}}
-  </ul>
-{{end}}
-
-{{define "diff"}}
-  <div><div>Receipt: {{.ReceiptID}}</div><div>Path: {{.Path}}</div></div>
-  <pre>{{.Diff}}</pre>
-{{end}}
-
+{{define "diff"}}<div>Receipt: {{.ReceiptID}}<br>Path: {{.Path}}</div><pre>{{.Diff}}</pre>{{end}}
