@@ -25,13 +25,13 @@ cp "$BUILD_DIR/msl-ledger-sidecar" "$stage/$name/"
 cp "$BUILD_DIR/BUILDINFO.json" "$stage/$name/"
 cp "$BUILD_DIR/SHA256SUMS" "$stage/$name/ARTIFACT-SHA256SUMS"
 
-if [[ -f docs/release/RELEASE_NOTES_v0.1.0-rc.1.md ]]; then
-  cp docs/release/RELEASE_NOTES_v0.1.0-rc.1.md "$stage/$name/RELEASE_NOTES.md"
+if [[ -f "docs/release/RELEASE_NOTES_v$VERSION.md" ]]; then
+  cp "docs/release/RELEASE_NOTES_v$VERSION.md" "$stage/$name/RELEASE_NOTES.md"
 fi
 
 if [[ "$RELEASE_VISIBILITY" == public ]]; then
   "$SCRIPT_DIR/verify-license-readiness.sh"
-  cp LICENSE LICENSING.md NOTICE "$stage/$name/"
+  cp LICENSE LICENSING.md NOTICE CONTRIBUTING.md "$stage/$name/"
 else
   if [[ -f docs/legal/review/Cann-o-Call_BSL-1.1_Small-Business-License_DRAFT.md ]]; then
     mkdir -p "$stage/$name/legal-review"

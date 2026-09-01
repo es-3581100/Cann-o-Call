@@ -1,0 +1,81 @@
+Business Source License 1.1
+
+Copyright 2026 Eric T. Sawtelle
+
+License text copyright © 2024 MariaDB plc, All Rights Reserved. “Business Source License” is a trademark of MariaDB plc.
+
+Parameters
+
+Licensor: Eric T. Sawtelle
+
+Licensed Work: Cann-o-Call 0.1.0-rc.2
+
+Additional Use Grant: Cann-o-Call Small-Business Production Use Grant
+
+Qualifying users may use the Licensed Work in production without a commercial
+license fee only if both of the following are true:
+
+1. The user and its Affiliates have fewer than 50 full-time-equivalent
+   employees in the aggregate; and
+2. The user and its Affiliates have less than US $5,000,000 aggregate gross
+   annual revenue.
+
+“Affiliate” means an entity that directly or indirectly controls, is
+controlled by, or is under common control with the user. Employee count and
+gross annual revenue are aggregated across the user and all Affiliates.
+
+Qualifying use includes the user's own internal business, organizational, and
+operational use; qualifying nonprofit internal use; teaching; coursework;
+academic research; and qualifying educational institutional use.
+
+This Additional Use Grant does not permit hosted SaaS offered to third parties,
+hosted Cann-o-Call service for third parties, managed services, managed
+infrastructure sold to third parties, paid automation or agent operations for
+third parties, resale, sublicensing as a commercial offering, rental or lease
+of access, white-label offerings, or commercial service offerings in which
+Cann-o-Call functionality forms a material part of the service sold. Those uses
+require a separate commercial license.
+
+If a previously qualifying user later exceeds either eligibility threshold, the
+user may continue the existing previously permitted deployment for up to 30
+days solely to obtain a commercial license or discontinue the newly
+non-permitted use. During that period, the user may not materially expand the
+deployment or create new deployments relying on this Additional Use Grant.
+
+Nonprofit organizations may qualify for free internal production use only when
+they satisfy the same eligibility thresholds. Educational institutions may use
+the Licensed Work for teaching, coursework, academic research, and internal
+institutional use only when otherwise eligible. Neither status permits the
+hosted third-party, managed-service, resale, or white-label uses excluded
+above.
+
+Change Date: 2030-09-01
+
+Change License: Apache License, Version 2.0
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative works, redistribute, and make non-production use of the Licensed Work. The Licensor may make an Additional Use Grant, above, permitting limited production use.
+
+Effective on the Change Date, or the fourth anniversary of the first publicly available distribution of a specific version of the Licensed Work under this License, whichever comes first, the Licensor hereby grants you rights under the terms of the Change License, and the rights granted in the paragraph above terminate.
+
+If your use of the Licensed Work does not comply with the requirements currently in effect as described in this License, you must purchase a commercial license from the Licensor, its affiliated entities, or authorized resellers, or you must refrain from using the Licensed Work.
+
+All copies of the original and modified Licensed Work, and derivative works of the Licensed Work, are subject to this License. This License applies separately for each version of the Licensed Work and the Change Date may vary for each version of the Licensed Work released by Licensor.
+
+You must conspicuously display this License on each original or modified copy of the Licensed Work. If you receive the Licensed Work in original or modified form from a third party, the terms and conditions set forth in this License apply to your use of that work.
+
+Any use of the Licensed Work in violation of this License will automatically terminate your rights under this License for the current and all other versions of the Licensed Work.
+
+This License does not grant you any right in any trademark or logo of Licensor or its affiliates (provided that you may use a trademark or logo of Licensor as expressly required by this License).TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON AN “AS IS” BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS, EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND TITLE. MariaDB hereby grants you permission to use this License’s text to license your works, and to refer to it using the trademark “Business Source License”, as long as you comply with the Covenants of Licensor below.
+
+Covenants of Licensor
+
+In consideration of the right to use this License’s text and the “Business Source License” name and trademark, Licensor covenants to MariaDB, and to all other recipients of the licensed work to be provided by Licensor:
+
+To specify as the Change License the GPL Version 2.0 or any later version, or a license that is compatible with GPL Version 2.0 or a later version, where “compatible” means that software provided under the Change License can be included in a program with software provided under GPL Version 2.0 or a later version. Licensor may specify additional Change Licenses without limitation.
+To either: (a) specify an additional grant of rights to use that does not impose any additional restriction on the right granted in this License, as the Additional Use Grant; or (b) insert the text “None” to specify a Change Date. Not to modify this License in any other way.
+
+Notice
+
+The Business Source License (this document, or the “License”) is not an Open Source license. However, the Licensed Work will eventually be made available under an Open Source License, as stated in this License.
