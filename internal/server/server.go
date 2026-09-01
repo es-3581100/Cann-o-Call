@@ -110,6 +110,18 @@ func New() *Server {
 			actorTTL = d
 		}
 	}
+	actorMaxDepth := 8
+	if v := os.Getenv("ACTOR_MAX_DEPTH"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			actorMaxDepth = n
+		}
+	}
+	actorMaxBudget := 32
+	if v := os.Getenv("ACTOR_MAX_BUDGET"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			actorMaxBudget = n
+		}
+	}
 
 	s := &Server{
 		store:             NewStore(),
@@ -121,7 +133,7 @@ func New() *Server {
 		AllowAbsoluteRoot: os.Getenv("ALLOW_ABSOLUTE_ROOT") == "true",
 		Templates:         template.Must(template.ParseFS(web.FS, "templates/*.html")),
 		Quarantine:        quarantineStore,
-		Actors:            actorstub.New(actorMax, actorTTL),
+		Actors:            actorstub.NewWithConfig(actorstub.Config{MaxActive: actorMax, MaxDepth: actorMaxDepth, MaxBudget: actorMaxBudget, TTL: actorTTL}),
 	}
 
 	mux := http.NewServeMux()
