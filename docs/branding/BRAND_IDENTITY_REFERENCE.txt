@@ -1,0 +1,616 @@
+# Cann-o-Call — Brand Identity Reference
+
+Status: Canonical visual/text reference derived from the approved brand source image.
+Purpose: Preserve a consistent visual identity across application UI, icons,
+documentation, repositories, marketing images, and generated supporting assets.
+
+---
+
+## 1. Brand Name
+
+Cann-o-Call
+
+Primary descriptor:
+ACTOR RUNTIME
+
+---
+
+## 2. Brand Essence
+
+Cann-o-Call is an actor-driven agent-runtime that orchestrates:
+
+- autonomous agents
+- state flows
+- secure communications
+
+Core statement:
+
+Every call.
+Every actor.
+Every state.
+Connected.
+
+The brand should communicate a system in which independent actors exchange
+messages through a reliable runtime while observable state moves through the
+system.
+
+---
+
+## 3. Brand Personality
+
+Primary traits:
+
+- RELIABLE
+- AUTONOMOUS
+- TRANSPARENT
+- MODULAR
+- SECURE
+- RETRO-FUTURISTIC
+
+The product should feel technical and capable without becoming visually
+chaotic.
+
+It should communicate:
+
+- observable machinery
+- explicit state
+- discrete actors
+- message passing
+- controlled coordination
+- trustworthy runtime infrastructure
+
+---
+
+## 4. Tagline
+
+END TO END STATE SYSTEM
+
+EVERY CALL - EVERY ACTOR - EVERY STATE
+
+---
+
+## 5. Brand Mission
+
+To provide a transparent, reliable, and extensible runtime for autonomous
+agents to communicate, collaborate, and evolve — securely, at scale.
+
+---
+
+## 6. Primary Visual Motif
+
+The central brand mark is a luminous geometric diamond/core.
+
+Visual characteristics:
+
+- diamond-shaped outer silhouette
+- bright white/cyan center
+- turquoise inner glow
+- electric-blue outer geometry
+- dark navy/black surrounding field
+- pixel-art / digital-rendered construction
+- luminous, energized appearance
+
+Conceptually, the mark can represent:
+
+- runtime core
+- state
+- active message
+- actor identity
+- system coordination
+- connected execution
+
+The diamond/core should remain the most recognizable reusable symbol in the
+brand.
+
+---
+
+## 7. Logo System
+
+### Primary Logo
+
+Diamond/core icon + "Cann-o-Call" wordmark + "ACTOR RUNTIME" descriptor.
+
+Preferred presentation:
+- full color
+- dark background
+- cyan/blue illumination
+- white/light primary wordmark
+
+### Square Mark / Avatar
+
+Use the diamond/core icon by itself inside a dark technical frame.
+
+Suitable for:
+
+- application icon
+- avatar
+- favicon
+- small repository identity
+- actor/runtime badge
+
+### Horizontal Mark
+
+Diamond/core icon followed by:
+
+Cann-o-Call
+ACTOR RUNTIME
+
+Use where horizontal space is available.
+
+### Brand Usage Rule
+
+Use the full-color logo primarily on dark backgrounds.
+
+Maintain clear space around the mark approximately equal to the height of the
+central diamond icon.
+
+Do not:
+
+- stretch the logo
+- distort its proportions
+- arbitrarily recolor it
+- remove essential geometry
+- place it on visually noisy backgrounds that destroy contrast
+
+---
+
+## 8. Color Palette
+
+### Primary / Functional Accent Colors
+
+Cyan / Runtime:
+#00FFD1
+
+Electric Blue:
+#33C7FF
+
+Periwinkle / Violet:
+#7A88FF
+
+Warning Yellow:
+#FFD84D
+
+Failure Red:
+#FF5A5A
+
+### Neutral / Interface Colors
+
+Deep Background:
+#0B0F1A
+
+Raised Dark Surface:
+#121827
+
+Secondary Dark Surface:
+#1D2538
+
+Muted Light:
+#A6B5C7
+
+Primary Light:
+#E6F7FF
+
+---
+
+## 9. Color Semantics
+
+Use colors functionally as well as decoratively.
+
+Cyan / #00FFD1
+- active state
+- healthy connection
+- selected elements
+- runtime energy
+- primary brand accent
+
+Blue / #33C7FF
+- information
+- message flow
+- connections
+- technical structure
+- interactive framing
+
+Violet / #7A88FF
+- secondary system distinction
+- alternate state/category
+- supporting accent
+
+Yellow / #FFD84D
+- waiting
+- caution
+- pending work
+- attention
+
+Red / #FF5A5A
+- failure
+- error
+- rejected state
+- critical alert
+
+Dark navy values
+- application background
+- panels
+- terminal surfaces
+- infrastructure framing
+
+Light values
+- primary text
+- labels
+- high-contrast information
+
+---
+
+## 10. Typography
+
+### Primary Display Typeface
+
+ORBITRON
+
+Preferred use:
+- Cann-o-Call wordmark
+- major titles
+- prominent headings
+- feature labels
+
+Preferred weight:
+BOLD
+
+Character:
+- geometric
+- technological
+- futuristic
+- structured
+
+### Secondary Typeface
+
+SHARE TECH MONO
+
+Preferred use:
+- interface text
+- status labels
+- IDs
+- event streams
+- metrics
+- technical metadata
+- terminal/console elements
+
+Character:
+- monospaced
+- machine-readable
+- terminal-like
+- technical
+
+---
+
+## 11. Illustration Style
+
+Primary illustration direction:
+
+RETRO-FUTURISTIC PIXEL TECHNOLOGY
+
+Combine:
+
+- pixel-art influence
+- dark sci-fi control surfaces
+- modern technical dashboards
+- cyan/blue emissive lighting
+- small robotic actors
+- mechanical runtime machinery
+- state cores
+- servers
+- message symbols
+- data-flow connectors
+- beveled technical frames
+
+Illustrations should feel like a small observable machine ecosystem.
+
+They should not resemble generic corporate SaaS artwork.
+
+---
+
+## 12. Actor Visual Language
+
+Actors are represented as small autonomous robotic entities.
+
+Actor characteristics:
+
+- compact
+- friendly but mechanical
+- visibly separate from the central runtime
+- cyan/blue illuminated accents
+- capable of independent activity
+- visually connected through messages/state flows
+
+Actors should appear like workers participating in a larger deterministic
+system rather than human-like AI characters.
+
+---
+
+## 13. Runtime Visual Language
+
+The runtime is the central coordinating machine.
+
+Represent it using:
+
+- central mechanical core
+- diamond/state mark
+- message connections
+- data conduits
+- event flow
+- server/state-store relationships
+- visible input/output pathways
+
+The system should visually communicate:
+
+ACTORS -> MESSAGES -> RUNTIME -> STATE / EVENTS
+
+rather than presenting the runtime as a mysterious AI black box.
+
+---
+
+## 14. Core Concept Diagram
+
+Canonical conceptual relationships:
+
+Actors
+   |
+   | messages
+   v
+Runtime
+   |
+   +----> State Store
+   |
+   +----> Event Stream
+
+State and event information may flow back into the runtime.
+
+The application should visually emphasize explicit communication and state
+movement.
+
+---
+
+## 15. Icon Language
+
+Core icon categories established by the source identity:
+
+- ACTOR
+- MESSAGE
+- STATE
+- STORE
+- EVENT
+- ROUTER
+- POLICY
+- GUARD
+- METRIC
+- PLUGIN
+
+Icon characteristics:
+
+- compact pixel/technical construction
+- cyan and blue illumination
+- dark base
+- clear silhouette
+- small amount of white highlighting
+- occasional functional status color
+- framed or mechanical appearance where appropriate
+
+Icons should look like members of one technological ecosystem.
+
+---
+
+## 16. UI Style
+
+Primary interface style:
+
+Dark technical control plane / runtime console.
+
+### Surfaces
+
+Use:
+- near-black/navy backgrounds
+- dark blue raised panels
+- thin blue/cyan borders
+- restrained glow
+- square or lightly clipped technical corners
+
+Avoid:
+- large soft rounded SaaS cards
+- bright white application backgrounds
+- excessive gradients
+- generic glassmorphism
+
+### Primary Button
+
+Appearance:
+- luminous blue/cyan
+- technical border
+- high contrast
+
+Example action:
+EXECUTE
+
+### Secondary Button
+
+Appearance:
+- dark background
+- blue-gray border
+- subdued compared with primary action
+
+Example:
+CONFIGURE
+
+### Inputs
+
+Appearance:
+- dark field
+- thin blue-gray border
+- monospaced text
+
+Example value:
+actor_id_07
+
+---
+
+## 17. Status Language
+
+Canonical visual states shown in the source:
+
+RUNNING
+- green/cyan family
+- active/healthy
+
+WAITING
+- yellow
+- pending
+
+FAILED
+- red
+- unsuccessful/error
+
+COMPLETE
+- cyan/green
+- finished successfully
+
+Progress indicators should look like segmented technical meters rather than
+generic consumer-app progress bars.
+
+---
+
+## 18. Application UI Domains
+
+The visual identity is designed to support interfaces for:
+
+- DASHBOARD
+- ACTORS
+- FLOWS
+- STATES
+- EVENTS
+- SETTINGS
+- EVENT STREAM
+- METRICS
+
+Example runtime information includes:
+
+- actor IDs
+- running/waiting/completed state
+- flow diagrams
+- event timestamps
+- state updates
+- throughput
+- latency
+- error rate
+- actor count
+
+---
+
+## 19. UI Data Visualization
+
+Graphs and metrics should retain the technical-console aesthetic.
+
+Preferred presentation:
+
+- compact
+- high-density
+- dark background
+- thin cyan/blue graph lines
+- green for healthy metrics
+- red for errors
+- monospaced labels
+- explicit numerical values
+
+The interface should emphasize observability over decorative analytics.
+
+---
+
+## 20. Hero / Thumbnail Direction
+
+Hero imagery should show the system rather than an abstract AI concept.
+
+Preferred composition:
+
+Cann-o-Call
+ACTOR RUNTIME
+
+        |
+        v
+
+Actor <---- Runtime Core ----> Actor
+             |
+          State/Event
+          machinery
+
+Supporting elements may include:
+
+- message connections
+- small actors
+- state nodes
+- servers
+- runtime modules
+- technical framing
+- stars/pixels/digital particles used sparingly
+
+The runtime core should remain visually dominant.
+
+---
+
+## 21. Overall Mood
+
+Keywords:
+
+dark
+technical
+connected
+observable
+mechanical
+modular
+precise
+secure
+autonomous
+retro-futuristic
+pixel-digital
+runtime-oriented
+
+The visual world should feel like:
+
+"an autonomous machine system you can actually see operating."
+
+Not:
+
+"an abstract AI assistant."
+
+---
+
+## 22. Builder Guidance
+
+When creating new Cann-o-Call UI or media:
+
+1. Start with the dark navy foundation.
+2. Use cyan as the dominant identity accent.
+3. Reserve yellow/red for meaningful state.
+4. Prefer technical geometry over soft decorative shapes.
+5. Use the diamond runtime mark as the recurring identity anchor.
+6. Represent agents as discrete actors.
+7. Represent communication explicitly with messages/links.
+8. Represent state visibly.
+9. Keep system mechanics understandable.
+10. Preserve the retro-futuristic pixel-tech character.
+11. Favor observable infrastructure over AI-themed abstraction.
+12. Keep new visuals recognizably part of the same Cann-o-Call system.
+
+---
+
+## Canonical Brand Summary
+
+Cann-o-Call is a dark, retro-futuristic actor-runtime brand centered around a
+luminous cyan diamond/core.
+
+Its visual language combines pixel-inspired machine imagery, autonomous robot
+actors, explicit message/state flows, dark technical dashboards, monospaced
+system information, and cyan/blue illuminated infrastructure.
+
+The identity should consistently reinforce one central idea:
+
+EVERY CALL.
+EVERY ACTOR.
+EVERY STATE.
+CONNECTED.
