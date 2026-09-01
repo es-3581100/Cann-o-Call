@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"flatten-workspace/internal/progress"
 	"flatten-workspace/internal/projection"
 	"flatten-workspace/internal/replay"
 	"flatten-workspace/internal/transition"
@@ -48,11 +49,22 @@ func (s *Server) jsonVerifyReplay(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-
+	task, _ := s.beginTask(progress.OperationReplay, ws.ID, ws.ID, progress.PhaseRequestAccepted)
+	var taskID string
+	if task != nil {
+		taskID = task.Packet.TaskID
+	}
 	result, err := s.opVerifyReplay(ws)
 	if err != nil {
+		if taskID != "" {
+			s.failTask(taskID, err.Error())
+		}
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	if taskID != "" {
+		s.completeTask(taskID, progress.StatusComplete, "")
+		result["task_id"] = taskID
 	}
 
 	writeJSON(w, http.StatusOK, result)

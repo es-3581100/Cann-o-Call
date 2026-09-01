@@ -20,6 +20,9 @@ import (
 	"flatten-workspace/internal/actorstub"
 	"flatten-workspace/internal/authority"
 	"flatten-workspace/internal/eventlog"
+	"flatten-workspace/internal/graph"
+	"flatten-workspace/internal/orchestrator"
+	"flatten-workspace/internal/progress"
 	"flatten-workspace/internal/quarantine"
 	"flatten-workspace/internal/receipts"
 	"flatten-workspace/internal/transition"
@@ -74,6 +77,11 @@ type Server struct {
 	Templates         *template.Template
 	Quarantine        *quarantine.Store
 	Actors            *actorstub.Controller
+	Tasks             *progress.Registry
+	ProgressReceipts  *progress.Store
+	muOrch            sync.RWMutex
+	graphStores       map[string]*graph.Store
+	orchestrators     map[string]*orchestrator.Orchestrator
 }
 
 func New() *Server {
@@ -123,6 +131,8 @@ func New() *Server {
 		}
 	}
 
+	progressReceipts, _ := progress.NewStore(filepath.Join(dataDir, "progress"))
+	tasks := progress.NewRegistry(128)
 	s := &Server{
 		store:             NewStore(),
 		Events:            events,
@@ -134,6 +144,10 @@ func New() *Server {
 		Templates:         template.Must(template.ParseFS(web.FS, "templates/*.html")),
 		Quarantine:        quarantineStore,
 		Actors:            actorstub.NewWithConfig(actorstub.Config{MaxActive: actorMax, MaxDepth: actorMaxDepth, MaxBudget: actorMaxBudget, TTL: actorTTL}),
+		Tasks:             tasks,
+		ProgressReceipts:  progressReceipts,
+		graphStores:       map[string]*graph.Store{},
+		orchestrators:     map[string]*orchestrator.Orchestrator{},
 	}
 
 	mux := http.NewServeMux()
@@ -162,6 +176,17 @@ func New() *Server {
 	mux.HandleFunc("GET /api/ledger/verify", s.jsonVerifyLedger)
 	mux.HandleFunc("POST /api/checkpoints", s.createCheckpoint)
 	mux.HandleFunc("POST /api/snapshots/verify", s.jsonVerifySnapshot)
+
+	// Observability / operator CLI surface (deterministic JSON, never mutates authority)
+	mux.HandleFunc("GET /api/tasks", s.handleListTasks)
+	mux.HandleFunc("GET /api/tasks/{id}", s.handleGetTask)
+	mux.HandleFunc("GET /api/status", s.handleStatus)
+	mux.HandleFunc("GET /api/ledger/status", s.handleLedgerStatus)
+	mux.HandleFunc("GET /api/orchestrator/status", s.handleOrchestratorStatus)
+	mux.HandleFunc("GET /api/query/status", s.handleQueryStatus)
+	mux.HandleFunc("POST /api/query", s.handleQuery)
+	mux.HandleFunc("POST /api/ingest", s.handleIngest)
+	mux.HandleFunc("GET /api/tasks/{id}/receipt", s.handleTaskReceipt)
 
 	mux.HandleFunc("POST /api/workspaces/{id}/materialize", s.jsonMaterializeWorkspace)
 	mux.HandleFunc("POST /api/workspaces/{id}/bind", s.jsonBindWorkspace)

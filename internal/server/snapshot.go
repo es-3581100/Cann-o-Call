@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"flatten-workspace/internal/ids"
+	"flatten-workspace/internal/progress"
 	"flatten-workspace/internal/snapshot"
 )
 
@@ -13,6 +14,16 @@ func (s *Server) snapshotWorkspace(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	task, _ := s.beginTask(progress.OperationSnapshot, ws.ID, ws.ID, progress.PhaseRequestAccepted)
+	var taskID string
+	if task != nil {
+		taskID = task.Packet.TaskID
+	}
+	defer func() {
+		if taskID != "" {
+			s.completeTask(taskID, progress.StatusComplete, "")
+		}
+	}()
 
 	snapshotID := ids.New("snapshot")
 

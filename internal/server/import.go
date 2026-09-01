@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"flatten-workspace/internal/policy"
+	"flatten-workspace/internal/progress"
 	"flatten-workspace/internal/receipts"
 	"flatten-workspace/internal/workspace"
 )
@@ -72,8 +73,16 @@ func (s *Server) opImportEnvelope(
 	data []byte,
 	name string,
 ) (*workspace.Workspace, *receipts.Receipt, error) {
+	task, _ := s.beginTask(progress.OperationIngest, "global", name, progress.PhaseRequestAccepted)
+	var taskID string
+	if task != nil {
+		taskID = task.Packet.TaskID
+	}
 	ws, err := workspace.Parse(data)
 	if err != nil {
+		if taskID != "" {
+			s.failTask(taskID, err.Error())
+		}
 		return nil, nil, err
 	}
 
@@ -104,11 +113,24 @@ func (s *Server) opImportEnvelope(
 	}
 
 	if err := s.recordBuildLedgerBaseline(r, ws); err != nil {
+		if taskID != "" {
+			s.failTask(taskID, err.Error())
+		}
 		return nil, nil, err
 	}
 	// A workspace becomes visible only after every durable import transition,
 	// including its build-ledger baseline, has been admitted.
 	s.store.Add(ws)
+	if taskID != "" {
+		_ = s.Tasks.Update(taskID, func(p *progress.ProgressPacket) {
+			c := int64(ws.FileCount)
+			t := int64(ws.FileCount)
+			p.Completed = &c
+			p.Total = &t
+			p.Phase = progress.PhaseTerminal
+		})
+		s.completeTask(taskID, progress.StatusComplete, "")
+	}
 
 	return ws, importReceipt, nil
 }

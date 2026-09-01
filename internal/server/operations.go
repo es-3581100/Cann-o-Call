@@ -17,6 +17,7 @@ import (
 	"flatten-workspace/internal/ids"
 	"flatten-workspace/internal/materialize"
 	"flatten-workspace/internal/policy"
+	"flatten-workspace/internal/progress"
 	"flatten-workspace/internal/receipts"
 	"flatten-workspace/internal/workspace"
 
@@ -28,8 +29,21 @@ func (s *Server) opImportZip(
 	data []byte,
 	name string,
 ) (*workspace.Workspace, *receipts.Receipt, error) {
+	task, _ := s.beginTask(progress.OperationIngest, "global", name, progress.PhaseRequestAccepted)
+	var taskID string
+	if task != nil {
+		taskID = task.Packet.TaskID
+		defer func() {
+			if taskID != "" {
+				s.updateTaskMetrics(taskID)
+			}
+		}()
+	}
 	ws, err := workspace.FromZipBytes(data, name)
 	if err != nil {
+		if taskID != "" {
+			s.failTask(taskID, err.Error())
+		}
 		return nil, nil, err
 	}
 
@@ -88,6 +102,16 @@ func (s *Server) opImportZip(
 	// Do not expose a partially admitted import if the durable baseline failed.
 	s.store.Add(ws)
 	s.syncWorkspaceQuarantine(ws)
+	if taskID != "" {
+		_ = s.Tasks.Update(taskID, func(p *progress.ProgressPacket) {
+			c := int64(ws.FileCount)
+			t := int64(ws.FileCount)
+			p.Completed = &c
+			p.Total = &t
+			p.Phase = progress.PhaseTerminal
+		})
+		s.completeTask(taskID, progress.StatusComplete, "")
+	}
 
 	return ws, importReceipt, nil
 }
@@ -489,6 +513,11 @@ func (s *Server) createCheckpoint(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, err)
 		return
 	}
+	task, _ := s.beginTask(progress.OperationCheckpoint, "global", "", progress.PhaseRequestAccepted)
+	var taskID string
+	if task != nil {
+		taskID = task.Packet.TaskID
+	}
 
 	sidecarURL := os.Getenv("RUST_LEDGER_URL")
 
@@ -530,10 +559,14 @@ func (s *Server) createCheckpoint(w http.ResponseWriter, r *http.Request) {
 	// Checkpoints are derived cache artifacts. Do not append an accepted
 	// semantic transition or receipt after persisting one, because that would
 	// immediately make the checkpoint stale.
+	if taskID != "" {
+		s.completeTask(taskID, progress.StatusComplete, "")
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		// Retain the response field for clients that decode the prior shape; a
 		// derived checkpoint intentionally has no semantic receipt.
 		"receipt":    nil,
 		"checkpoint": checkpoint,
+		"task_id":    taskID,
 	})
 }

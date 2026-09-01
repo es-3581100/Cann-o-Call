@@ -8,6 +8,8 @@ run:
 
 build:
 	go build -o bin/flatten-workspace .
+	cp bin/flatten-workspace bin/cann-o-call 2>/dev/null || true
+	ln -sf flatten-workspace bin/cann-o-call 2>/dev/null || true
 
 test:
 	go test ./...
