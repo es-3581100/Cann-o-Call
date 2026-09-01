@@ -20,6 +20,7 @@ var cliCommands = map[string]bool{
 	"replay":   true,
 	"snapshot": true,
 	"task":     true,
+	"studio":   true,
 	"help":     true,
 }
 

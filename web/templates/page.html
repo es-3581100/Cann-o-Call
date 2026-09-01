@@ -4,104 +4,128 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Flatten Workspace Studio</title>
+  <title>Flatten Workspace Studio · terminal-first</title>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <style>
-    :root { color-scheme: dark; --mint:#00FFD1; --cyan:#33C7FF; --periwinkle:#7A88FF; --yellow:#FFD84D; --red:#FF5A5A; --void:#0B0F1A; --surface:#121827; --raised:#1D2538; --muted:#A6B5C7; --text:#E6F7FF; --line:rgba(166,181,199,.22); }
+    :root { color-scheme:dark; --void:{{.Theme.Void}}; --surface:{{.Theme.Surface}}; --raised:{{.Theme.Raised}}; --inset:{{.Theme.Inset}}; --text:{{.Theme.Text}}; --muted:{{.Theme.Muted}}; --line:{{.Theme.Line}}; --mint:{{.Theme.Mint}}; --cyan:{{.Theme.Cyan}}; --periwinkle:{{.Theme.Periwinkle}}; --yellow:{{.Theme.Yellow}}; --red:{{.Theme.Red}}; }
     * { box-sizing:border-box; }
-    body { margin:0; min-width:320px; background:var(--void); color:var(--text); font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    html,body { overflow-x:hidden; }
+    body { margin:0; min-width:320px; background:var(--void); color:var(--text); font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
     button,input,textarea,select { font:inherit; }
-    button,.button { cursor:pointer; border:1px solid var(--line); border-radius:6px; color:var(--text); background:var(--raised); padding:8px 10px; text-decoration:none; }
+    button,.button { cursor:pointer; border:1px solid var(--line); border-radius:3px; color:var(--text); background:var(--raised); padding:7px 9px; text-decoration:none; }
     button:hover,.button:hover { border-color:var(--cyan); color:var(--mint); }
     button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
-    input[type="text"],input[type="file"],textarea,select { width:100%; color:var(--text); background:var(--void); border:1px solid var(--line); border-radius:5px; padding:8px; }
+    input[type="text"],input[type="file"],textarea,select { width:100%; color:var(--text); background:var(--inset); border:1px solid var(--line); border-radius:3px; padding:7px; }
     textarea { min-height:105px; resize:vertical; }
     code { color:var(--cyan); }
     h1,h2,h3,p { margin-top:0; }
     h1 { font-size:18px; letter-spacing:.06em; margin-bottom:2px; }
     h2 { font-size:14px; margin-bottom:12px; color:var(--text); }
     h3 { font-size:12px; margin-bottom:8px; color:var(--cyan); text-transform:uppercase; letter-spacing:.08em; }
-    pre { margin:0; max-height:360px; overflow:auto; white-space:pre-wrap; background:var(--void); border:1px solid var(--line); border-radius:5px; padding:10px; color:var(--text); }
-    .app { display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:100vh; }
-    .topbar { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:16px; padding:9px 16px; background:rgba(11,15,26,.97); border-bottom:1px solid var(--line); }
-    .brand-image { width:56px; height:42px; object-fit:contain; object-position:center; border:1px solid var(--line); border-radius:5px; background:var(--surface); }
-    .brand-copy { min-width:205px; }
+    pre { margin:0; max-height:360px; overflow:auto; white-space:pre-wrap; background:var(--inset); border:1px solid var(--line); border-radius:3px; padding:9px; color:var(--text); }
+    .app { display:grid; grid-template-rows:64px minmax(0,1fr) auto; height:100vh; height:100dvh; }
+    .topbar { z-index:5; display:flex; align-items:center; gap:11px; padding:7px 14px; background:var(--surface); border-bottom:1px solid var(--line); box-shadow:0 5px 18px rgba(0,0,0,.22); }
+    .brand-image { width:48px; height:46px; object-fit:contain; object-position:center; border:1px solid var(--line); border-radius:2px; background:var(--inset); }
+    .brand-copy { min-width:280px; }
     .brand-copy p { margin:0; color:var(--muted); font-size:11px; }
-    .status-rail { margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; }
-    .chip { display:inline-flex; gap:5px; align-items:center; border:1px solid var(--line); border-radius:999px; padding:3px 8px; color:var(--muted); font-size:11px; white-space:nowrap; }
+    .status-rail { margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:5px; }
+    .chip { display:inline-flex; gap:5px; align-items:center; border:1px solid var(--line); border-radius:2px; padding:3px 7px; color:var(--muted); font-size:10px; white-space:nowrap; background:var(--inset); }
     .chip::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--muted); }
     .chip.ok::before { background:var(--mint); box-shadow:0 0 8px var(--mint); }
     .chip.warn::before { background:var(--yellow); }
     .chip.error::before { background:var(--red); }
-    .shell { display:grid; grid-template-columns:190px minmax(0,1fr) 270px; min-height:0; }
-    .nav { padding:12px; background:var(--surface); border-right:1px solid var(--line); }
+    .shell { display:grid; grid-template-columns:205px minmax(0,1fr) 282px; min-height:0; overflow:hidden; }
+    .nav { padding:10px 8px; background:var(--surface); border-right:1px solid var(--line); overflow:auto; }
     .nav-label { margin:0 0 8px; color:var(--muted); font-size:10px; letter-spacing:.12em; text-transform:uppercase; }
-    .nav button { width:100%; margin-bottom:5px; text-align:left; background:transparent; border-color:transparent; color:var(--muted); }
-    .nav button:hover,.nav button.active { color:var(--mint); border-color:rgba(0,255,209,.32); background:rgba(0,255,209,.06); }
+    .nav button { width:100%; margin-bottom:3px; text-align:left; background:transparent; border-color:transparent; color:var(--muted); }
+    .nav button:hover,.nav button.active { color:var(--mint); border-color:var(--mint); background:color-mix(in srgb, var(--mint) 8%, transparent); }
     .nav .nav-key { float:right; color:var(--periwinkle); font-size:10px; }
-    .main { min-width:0; overflow:auto; padding:14px; background:linear-gradient(135deg, rgba(51,199,255,.035), transparent 40%); }
-    .view { display:none; max-width:1500px; margin:0 auto; }
+    .main { min-width:0; overflow:auto; padding:11px; background:linear-gradient(135deg, color-mix(in srgb, var(--cyan) 5%, transparent), transparent 36%); }
+    .view { display:none; max-width:1660px; margin:0 auto; }
     .view.active { display:block; }
-    .view-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:13px; }
+    .view-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:9px; padding-bottom:8px; border-bottom:1px solid var(--line); }
     .view-heading p { margin:3px 0 0; color:var(--muted); }
-    .panel { min-width:0; border:1px solid var(--line); border-radius:7px; padding:12px; background:var(--surface); box-shadow:0 12px 24px rgba(0,0,0,.12); }
-    .panel.subtle { background:rgba(29,37,56,.56); }
-    .grid { display:grid; gap:12px; }
+    .panel { min-width:0; border:1px solid var(--line); border-radius:3px; padding:10px; background:var(--surface); }
+    .panel.subtle { background:color-mix(in srgb, var(--raised) 62%, transparent); }
+    .grid { display:grid; gap:9px; }
     .metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
-    .metric { min-height:86px; border-left:3px solid var(--periwinkle); }
+    .metric { min-height:74px; border-left:3px solid var(--periwinkle); }
     .metric:nth-child(2n) { border-left-color:var(--cyan); }
     .metric:nth-child(3n) { border-left-color:var(--mint); }
     .metric-label { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; }
-    .metric-value { display:block; overflow-wrap:anywhere; margin-top:8px; color:var(--text); font-size:20px; font-weight:700; }
+    .metric-value { display:block; overflow-wrap:anywhere; margin-top:5px; color:var(--text); font-size:18px; font-weight:700; }
     .metric-detail { display:block; overflow-wrap:anywhere; margin-top:4px; color:var(--muted); font-size:11px; }
-    .metaphor-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:12px; }
-    .metaphor { min-height:126px; border-top:2px solid var(--periwinkle); }
+    .metaphor-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin-top:9px; }
+    .metaphor { min-height:105px; border-top:2px solid var(--periwinkle); }
     .metaphor:nth-child(2n) { border-top-color:var(--cyan); }
     .metaphor:nth-child(3n) { border-top-color:var(--mint); }
     .metaphor p { margin:0; color:var(--muted); }
     .metaphor strong { display:block; margin:8px 0 4px; overflow-wrap:anywhere; color:var(--text); }
-    .two-col { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
-    .three-col { display:grid; grid-template-columns:220px minmax(230px,1fr) minmax(300px,1.25fr); gap:12px; min-height:430px; }
+    .two-col { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:9px; }
+    .ranger-grid { display:grid; grid-template-columns:220px minmax(250px,.8fr) minmax(360px,1.45fr); min-height:520px; height:calc(100dvh - 176px); overflow:hidden; border:1px solid var(--line); background:var(--surface); }
+    .ranger-grid .pane { display:grid; grid-template-rows:auto minmax(0,1fr); min-width:0; padding:9px; border:0; border-radius:0; border-right:1px solid var(--line); }
+    .ranger-grid .pane:last-child { border-right:0; }
+    .pane-body { min-height:0; overflow:auto; padding-right:4px; }
     .workspaces { display:flex; flex-direction:column; gap:6px; }
     .workspace-button { width:100%; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .workspace-button small { display:block; overflow:hidden; text-overflow:ellipsis; color:var(--muted); }
-    .tree-pane,.file-pane { min-height:400px; overflow:auto; }
+    .ranger-category,.ranger-entry { width:100%; text-align:left; }
+    .ranger-category { border-color:transparent; background:transparent; color:var(--cyan); padding:4px 0; }
+    .ranger-category small,.ranger-entry small { display:block; color:var(--muted); overflow-wrap:anywhere; }
+    .ranger-entry { margin-bottom:4px; }
+    .tree-pane,.file-pane { min-height:0; }
     .tree-pane ul { padding-left:15px; margin:0; list-style:none; }
     .tree-pane li { margin:3px 0; }
     .tree-pane details { margin-left:4px; }
     summary { cursor:pointer; color:var(--cyan); }
-    .file { cursor:pointer; color:var(--text); }
-    .file:hover { color:var(--mint); }
+    .file { display:block; cursor:pointer; color:var(--text); border:1px solid transparent; border-radius:2px; padding:2px 4px; }
+    .file:hover,.file:focus,.ranger-selected { color:var(--mint); border-color:var(--mint) !important; background:color-mix(in srgb, var(--mint) 8%, transparent) !important; outline:0; }
     .empty { color:var(--muted); padding:12px 0; }
     .row { display:grid; gap:6px; margin-bottom:10px; }
     .actions { display:flex; flex-wrap:wrap; gap:7px; }
     .result { margin-top:12px; }
     .notice { color:var(--muted); border-left:2px solid var(--yellow); padding-left:8px; }
     .error { color:var(--red); }
-    .inspector { min-width:0; padding:12px; border-left:1px solid var(--line); background:var(--surface); overflow:auto; }
+    .inspector { min-width:0; padding:10px; border-left:1px solid var(--line); background:var(--surface); overflow:auto; }
     .inspector dl { margin:0; }
     .inspector dt { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
     .inspector dd { margin:2px 0 10px; overflow-wrap:anywhere; color:var(--text); }
     .rule { border:0; border-top:1px solid var(--line); margin:12px 0; }
-    .workbench { display:grid; grid-template-columns:190px minmax(0,1fr); border-top:1px solid var(--line); background:var(--surface); }
-    .workbench-title { padding:10px 14px; color:var(--mint); border-right:1px solid var(--line); font-size:12px; font-weight:bold; }
-    .workbench-main { padding:8px 12px; }
+    .workbench { display:grid; grid-template-columns:205px minmax(0,1fr); border-top:1px solid var(--line); background:var(--surface); max-height:224px; transition:max-height .16s ease; }
+    .workbench.terminal-collapsed { max-height:35px; }
+    .workbench.terminal-collapsed .workbench-main { display:none; }
+    .workbench-title { padding:8px 10px; color:var(--mint); border-right:1px solid var(--line); font-size:11px; font-weight:bold; }
+    .terminal-toggle { float:right; padding:2px 6px; font-size:10px; }
+    .workbench-main { padding:7px 10px; min-width:0; }
     .cli-form { display:flex; gap:8px; }
     .cli-form input { min-width:0; }
-    .cli-output { margin-top:8px; max-height:150px; }
+    .cli-output { margin-top:7px; max-height:114px; }
     .cli-help { margin:6px 0 0; color:var(--muted); font-size:11px; }
     .hidden { display:none !important; }
     .tag { color:var(--mint); }
     .status-error { color:var(--red); }
-    @media (max-width:1050px) { .shell { grid-template-columns:170px minmax(0,1fr); } .inspector { display:none; } .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .metaphor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .workbench { grid-template-columns:170px minmax(0,1fr); } }
-    @media (max-width:720px) { .topbar { align-items:flex-start; } .status-rail { margin-left:0; justify-content:flex-start; } .shell { grid-template-columns:1fr; } .nav { display:flex; gap:4px; overflow:auto; border-right:0; border-bottom:1px solid var(--line); padding:7px; } .nav-label { display:none; } .nav button { width:auto; flex:0 0 auto; margin:0; } .nav .nav-key { display:none; } .metrics,.two-col,.three-col,.metaphor-grid { grid-template-columns:1fr; } .tree-pane,.file-pane { min-height:220px; } .workbench { grid-template-columns:1fr; } .workbench-title { border-right:0; border-bottom:1px solid var(--line); } }
+    .meter { height:12px; overflow:hidden; border:1px solid var(--line); background:repeating-linear-gradient(90deg,var(--inset) 0 calc(6.25% - 2px),var(--line) calc(6.25% - 2px) 6.25%); }
+    .meter > span { display:block; height:100%; width:0; background:repeating-linear-gradient(90deg,var(--mint) 0 calc(6.25% - 2px),transparent calc(6.25% - 2px) 6.25%); transition:width .18s ease; }
+    .monitor-grid { display:grid; grid-template-columns:1.2fr .8fr; gap:9px; margin-top:9px; }
+    .monitor-line { display:grid; grid-template-columns:140px minmax(0,1fr) auto; align-items:center; gap:9px; padding:7px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+    .monitor-line:last-child { border-bottom:0; }
+    .monitor-value { color:var(--mint); white-space:nowrap; }
+    .raw-diagnostics { margin-top:9px; color:var(--muted); }
+    .raw-diagnostics summary { color:var(--cyan); }
+    .raw-diagnostics pre { margin-top:7px; }
+    .actor-table { width:100%; border-collapse:collapse; font-size:11px; }
+    .actor-table th,.actor-table td { padding:6px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+    .actor-table th { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
+    .table-wrap { overflow:auto; }
+    @media (max-width:1050px) { .shell { grid-template-columns:170px minmax(0,1fr); } .inspector { display:none; } .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .metaphor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .workbench { grid-template-columns:170px minmax(0,1fr); } .ranger-grid { grid-template-columns:190px minmax(230px,1fr) minmax(290px,1.2fr); } }
+    @media (max-width:720px) { .app { height:auto; min-height:100vh; } .topbar { height:auto; align-items:flex-start; flex-wrap:wrap; } .status-rail { margin-left:0; justify-content:flex-start; } .shell { grid-template-columns:1fr; overflow:visible; } .nav { display:flex; gap:4px; overflow:auto; border-right:0; border-bottom:1px solid var(--line); padding:7px; } .nav-label { display:none; } .nav button { width:auto; flex:0 0 auto; margin:0; } .nav .nav-key { display:none; } .metrics,.two-col,.metaphor-grid,.monitor-grid { grid-template-columns:1fr; } .ranger-grid { height:auto; min-height:0; grid-template-columns:1fr; overflow:visible; } .ranger-grid .pane { min-height:220px; border-right:0; border-bottom:1px solid var(--line); } .workbench { grid-template-columns:1fr; } .workbench-title { border-right:0; border-bottom:1px solid var(--line); } }
   </style>
 </head>
 <body>
   <div class="app">
     <header class="topbar">
       <img class="brand-image" src="/assets/brand/cann-o-call-brand-source.png" alt="Cann-o-Call Actor Runtime mark">
-      <div class="brand-copy"><h1>Flatten Workspace Studio</h1><p>Cann-o-Call Actor Runtime · bounded operator control plane</p></div>
+       <div class="brand-copy"><h1>Flatten Workspace Studio</h1><p>Terminal-first Go Studio · HTMX secondary projection.</p></div>
       <div class="status-rail" aria-label="Current runtime status">
         <span id="health-chip" class="chip warn">Health: loading</span>
         <span id="ledger-chip" class="chip warn">Ledger: loading</span>
@@ -127,54 +151,54 @@
         {{if .Error}}<div class="panel error">{{.Error}}</div>{{end}}
 
         <section class="view active" data-view="overview">
-          <div class="view-heading"><div><h2>Overview · machine model</h2><p>Current read-only runtime projection from <code>/api/status</code>, <code>/api/ledger/status</code>, and <code>/api/tasks</code>. The Studio labels only backed machine concepts; unavailable topology and event detail remain unavailable.</p></div><button type="button" data-refresh-status>Refresh snapshot</button></div>
+           <div class="view-heading"><div><h2>Overview · shared machine model</h2><p>Terminal and browser consume the same read-only <code>/api/studio</code> ViewModel. Unavailable detail remains explicit.</p></div><button type="button" data-refresh-status>Refresh snapshot</button></div>
           <div class="grid metrics">
             <article class="panel metric"><span class="metric-label">Canvas · graph nodes / edges</span><strong class="metric-value" data-status="graph">N/A</strong><span class="metric-detail">active workspace/machine graph aggregate</span></article>
             <article class="panel metric"><span class="metric-label">History · ledger sequence</span><strong class="metric-value" data-status="ledger_sequence">N/A</strong><span class="metric-detail">head: <span data-status="head_event">N/A</span></span></article>
             <article class="panel metric"><span class="metric-label">Progress · active actors</span><strong class="metric-value" data-status="actors">N/A</strong><span class="metric-detail">local bounded lifecycle</span></article>
             <article class="panel metric"><span class="metric-label">Progress · registered tasks</span><strong class="metric-value" data-status="task_count">N/A</strong><span class="metric-detail" data-status="task_statuses">N/A</span></article>
           </div>
-          <div class="two-col" style="margin-top:12px">
+          <div class="two-col" style="margin-top:9px">
             <article class="panel"><h3>Ledger checkpoint</h3><dl><dt>Verification</dt><dd data-status="ledger_verification">N/A</dd><dt>Checkpoint</dt><dd data-status="checkpoint">N/A</dd><dt>Head event</dt><dd data-status="head_event">N/A</dd></dl></article>
             <article class="panel"><h3>Selection projection</h3><dl><dt>Candidates considered</dt><dd data-status="candidates_considered">N/A</dd><dt>Selected</dt><dd data-status="candidates_selected">N/A</dd><dt>Coverage</dt><dd data-status="coverage">N/A</dd></dl></article>
           </div>
-          <div class="metaphor-grid" aria-label="Architecture v0.1 machine concepts">
-            <article class="panel metaphor"><h3>Canvas</h3><p>Active workspace / machine graph.</p><strong data-status="canvas_workspace">No workspace selected</strong><span class="metric-detail">Machine graph aggregate: <span data-status="graph">N/A</span> (no per-workspace graph API)</span></article>
-            <article class="panel metaphor"><h3>Mask / selection</h3><p>Bounded context scope, not hidden inference.</p><strong><span data-status="candidates_selected">N/A</span> selected / <span data-status="candidates_considered">N/A</span> considered</strong><span class="metric-detail">Coverage: <span data-status="coverage">N/A</span></span></article>
-            <article class="panel metaphor"><h3>History</h3><p>Durable ledger and replay evidence.</p><strong>Sequence <span data-status="ledger_sequence">N/A</span></strong><span class="metric-detail">Head ID: <span data-status="head_event">N/A</span></span></article>
-            <article class="panel metaphor"><h3>Variants</h3><p>Build / solution branches.</p><strong>Unavailable</strong><span class="metric-detail">No variant or branch-topology API is exposed.</span></article>
-            <article class="panel metaphor"><h3>Progress</h3><p>Bounded actor execution and task registry.</p><strong><span data-status="actors">N/A</span> active actors · <span data-status="task_count">N/A</span> tasks</strong><span class="metric-detail" data-status="task_statuses">N/A</span></article>
-            <article class="panel metaphor"><h3>Export</h3><p>Snapshot / build-package / ledger snapshot.</p><strong>Workspace snapshot and reports are controlled</strong><span class="metric-detail">Build-package and ledger-snapshot exports: unavailable. Snapshot and verification reports require a selected workspace.</span></article>
+          <div class="metaphor-grid" aria-label="Current machine-model mapping">
+            <article class="panel metaphor"><h3>Canvas · active surface</h3><p>Workspace / rebuildable graph projection.</p><strong data-status="canvas_workspace">No workspace selected</strong><span class="metric-detail">Nodes / edges: <span data-status="graph">N/A</span>; per-workspace graph: unavailable.</span></article>
+            <article class="panel metaphor"><h3>Mask · active selection</h3><p>Bounded context scope, not hidden inference.</p><strong><span data-status="candidates_selected">N/A</span> / <span data-status="candidates_considered">N/A</span> selected</strong><span class="metric-detail">Coverage: <span data-status="coverage">N/A</span></span></article>
+            <article class="panel metaphor"><h3>History · durable evidence</h3><p>Ledger head and replay state.</p><strong>Sequence <span data-status="ledger_sequence">N/A</span></strong><span class="metric-detail">Head: <span data-status="head_event">N/A</span></span></article>
+            <article class="panel metaphor"><h3>Variants · branch topology</h3><p>Build / solution branches.</p><strong>Unavailable</strong><span class="metric-detail">No variant or branch-topology API is exposed.</span></article>
+            <article class="panel metaphor"><h3>Progress · bounded work</h3><p>Local actors and task registry.</p><strong><span data-status="actors">N/A</span> actors · <span data-status="task_count">N/A</span> tasks</strong><span class="metric-detail" data-status="task_statuses">N/A</span></article>
+            <article class="panel metaphor"><h3>Export · controlled artifacts</h3><p>Snapshot / report actions retain checks.</p><strong>Workspace snapshot + reports</strong><span class="metric-detail">Build-package and ledger-snapshot exports unavailable; select a workspace for controlled downloads.</span></article>
           </div>
           <p id="status-error" class="notice hidden" role="status"></p>
         </section>
 
         <section class="view" data-view="ranger">
-          <div class="view-heading"><div><h2>Ranger</h2><p>Workspace, tree, and file panes. This navigator uses only the existing workspace/tree/file HTMX routes.</p></div></div>
-          <div class="three-col">
-            <article class="panel"><h3>Workspaces</h3><div class="workspaces">
-              {{range .Workspaces}}
-                <button class="workspace-button" hx-get="/ui/workspaces/{{.ID}}/tree" hx-target="#ranger-tree" hx-swap="innerHTML" onclick="selectWorkspace({{printf "%q" .ID}}, {{printf "%q" .Format}}, {{.FileCount}}, {{.DirectoryCount}})">{{.ID}}<small>{{.FileCount}} files · {{.DirectoryCount}} directories</small></button>
-              {{else}}<p class="empty">No workspace loaded.</p>{{end}}
-            </div></article>
-            <article class="panel tree-pane"><h3>Tree</h3><div id="ranger-tree" class="empty">Select a workspace to load its existing tree.</div></article>
-            <article class="panel file-pane"><h3>File inspector</h3><div id="fileViewer" class="empty">Select a file from the workspace tree.</div></article>
+           <div class="view-heading"><div><h2>Ranger</h2><p>Shared workspace navigation projection; HTMX remains available for safe tree/file drilldown.</p></div></div>
+           <div class="ranger-grid" role="group" aria-label="Ranger navigator">
+             <article class="panel pane"><h3>01 · Categories</h3><div class="pane-body workspaces">
+               {{range .Studio.Ranger.Groups}}<button class="ranger-category" type="button" onclick="selectRangerRow(this)">{{.Category}}<small>{{len .Entries}} entries · {{.State}}{{if .Diagnostic}} · {{.Diagnostic}}{{end}}</small></button>{{end}}
+             </div></article>
+             <article class="panel pane"><h3>02 · Entries</h3><div class="pane-body workspaces">
+               {{range .Studio.Ranger.Groups}}{{range .Entries}}
+                  {{if eq .Category "workspaces"}}<button class="workspace-button" hx-get="/ui/workspaces/{{.WorkspaceID}}/tree" hx-target="#ranger-tree" hx-swap="innerHTML" onclick="selectWorkspace({{printf "%q" .WorkspaceID}}, {{printf "%q" .Metadata.Format}}, {{.Metadata.FileCount}}, {{.Metadata.DirectoryCount}}); selectRangerRow(this)">{{.Label}}<small>{{.Kind}}</small></button>{{else}}<button class="ranger-entry" type="button" onclick="selectRangerRow(this)">{{.Label}}<small>{{.Category}} · {{.Kind}}</small></button>{{end}}
+               {{end}}{{end}}
+             </div></article>
+             <article class="panel pane tree-pane"><h3>03 · Inspector / workspace tree</h3><div id="ranger-tree" class="pane-body">{{if .Studio.Ranger.InitialWorkspaceID}}{{template "studioTree" .Studio.Ranger.InitialTree}}{{else}}<p class="empty">No workspace loaded.</p>{{end}}</div><div id="fileViewer" class="pane-body empty">Select a file from the workspace tree.</div></article>
           </div>
         </section>
 
         <section class="view" data-view="monitor">
-          <div class="view-heading"><div><h2>btop · current observability</h2><p>Current snapshots only: ledger, active actors, and bounded task registry. No time-series, CPU, throughput, or event stream is inferred.</p></div><button type="button" data-refresh-status>Refresh snapshot</button></div>
-          <div class="grid metrics">
-            <article class="panel metric"><span class="metric-label">Ledger sequence</span><strong class="metric-value" data-status="ledger_sequence">N/A</strong><span class="metric-detail">from current ledger status</span></article>
-            <article class="panel metric"><span class="metric-label">Ledger head identifier</span><strong class="metric-value" data-status="head_event">N/A</strong><span class="metric-detail">current head event ID</span></article>
-            <article class="panel metric"><span class="metric-label">Active actors</span><strong class="metric-value" data-status="actors">N/A</strong><span class="metric-detail">queued: <span data-status="actor_queue">N/A</span></span></article>
-            <article class="panel metric"><span class="metric-label">Task registry</span><strong class="metric-value" data-status="task_count">N/A</strong><span class="metric-detail" data-status="task_statuses">N/A</span></article>
+           <div class="view-heading"><div><h2>Monitor · current observability</h2><p>Shared current snapshot only: no time-series, CPU, throughput, or event stream is inferred.</p></div><button type="button" data-refresh-status>Refresh snapshot</button></div>
+          <div class="monitor-grid">
+            <article class="panel"><h3>Runtime counters</h3>
+              <div class="monitor-line"><span>Ledger sequence</span><span class="metric-detail">Current durable status; no maximum is exposed.</span><strong class="monitor-value" data-status="ledger_sequence">N/A</strong></div>
+              <div class="monitor-line"><span>Active actors</span><span class="metric-detail">Local lifecycle count; maximum is not exposed here.</span><strong class="monitor-value" data-status="actors">N/A</strong></div>
+              <div class="monitor-line"><span>Queued actors</span><span class="metric-detail">Current queue observation.</span><strong class="monitor-value" data-status="actor_queue">N/A</strong></div>
+            </article>
+            <article class="panel"><h3>Bounded task registry</h3><strong class="metric-value"><span data-status="task_count">N/A</span> / 128</strong><span class="metric-detail" data-status="task_statuses">N/A</span><div class="meter" role="progressbar" aria-label="Registered tasks out of capacity 128" aria-valuemin="0" aria-valuemax="128" aria-valuenow="0"><span id="task-meter"></span></div><p class="metric-detail">128 is the registry capacity; no usage meter is shown where a denominator is not exposed.</p></article>
           </div>
-          <div class="two-col" style="margin-top:12px">
-            <article class="panel"><h3>Status snapshot</h3><pre id="status-snapshot">Loading /api/status…</pre></article>
-            <article class="panel"><h3>Ledger snapshot</h3><pre id="ledger-snapshot">Loading /api/ledger/status…</pre></article>
-          </div>
-          <article class="panel" style="margin-top:12px"><h3>Progress · bounded task execution</h3><pre id="task-snapshot">Loading /api/tasks…</pre></article>
+          <details class="panel raw-diagnostics"><summary>Details · Shared Studio ViewModel</summary><pre id="studio-snapshot">Server-rendered snapshot loaded.</pre></details>
           <p id="monitor-stamp" class="notice">Waiting for a current snapshot.</p>
         </section>
 
@@ -193,12 +217,18 @@
           <div class="view-heading"><div><h2>Progress · Actors / Graph topology</h2><p>Actor descriptors are extant local bounded-execution data. No graph-topology API is exposed, so topology detail is unavailable.</p></div></div>
           <div class="two-col">
             <article class="panel"><h3>Workspace actor views</h3><div class="workspaces">{{range .Workspaces}}<button class="workspace-button" hx-get="/ui/workspaces/{{.ID}}/actors" hx-target="#actor-list" hx-swap="innerHTML" onclick="selectWorkspace({{printf "%q" .ID}}, {{printf "%q" .Format}}, {{.FileCount}}, {{.DirectoryCount}})">{{.ID}}<small>Load recorded activations</small></button>{{else}}<p class="empty">No workspace loaded.</p>{{end}}</div><hr class="rule"><p class="notice">Topology edges and event-level detail: N/A — not supplied by an existing API.</p></article>
-            <article class="panel"><h3>Actor activations</h3><div id="actor-list" class="empty">Select a workspace to request existing actor descriptors.</div></article>
+            <article class="panel"><h3>Actor activation registry</h3><div id="actor-list" class="empty">Select a workspace to request existing actor descriptors.</div></article>
           </div>
         </section>
 
         <section class="view" data-view="ledger">
           <div class="view-heading"><div><h2>History · Ledger / Receipts / Verification</h2><p>Durable ledger and replay evidence are verified through existing safe routes. Event-stream detail is unavailable and is not simulated.</p></div></div>
+          <div class="grid metrics">
+            <article class="panel metric"><span class="metric-label">Ledger sequence</span><strong class="metric-value" data-status="ledger_sequence">N/A</strong><span class="metric-detail">head: <span data-status="head_event">N/A</span></span></article>
+            <article class="panel metric"><span class="metric-label">Ledger verification</span><strong class="metric-value" data-status="ledger_verification">N/A</strong><span class="metric-detail">current status only</span></article>
+            <article class="panel metric"><span class="metric-label">Checkpoint</span><strong class="metric-value" data-status="checkpoint">N/A</strong><span class="metric-detail">current status only</span></article>
+             <article class="panel metric"><span class="metric-label">Receipt evidence</span><strong class="metric-value" data-status="receipt_count">N/A</strong><span class="metric-detail">Current read-only receipt projection.</span></article>
+          </div>
           <div class="two-col">
             <article class="panel"><h3>Global verification</h3><div class="actions"><button hx-get="/ui/ledger/verify" hx-target="#verification-result" hx-swap="innerHTML">Verify event hash chain</button><button hx-get="/ui/receipts/verify" hx-target="#verification-result" hx-swap="innerHTML">Verify receipt hash chain</button></div><div id="verification-result" class="result">No verification requested.</div></article>
             <article class="panel"><h3>Snapshot verification</h3><form hx-post="/ui/snapshots/verify" hx-target="#verification-result" hx-swap="innerHTML" hx-encoding="multipart/form-data"><div class="row"><input type="file" name="file" accept=".zip"></div><button>Verify snapshot</button></form><hr class="rule"><p class="notice">Verification reads current evidence; it does not advance semantic authority.</p></article>
@@ -225,11 +255,11 @@
     </div>
 
     <footer class="workbench" aria-label="Bounded CLI workbench">
-      <div class="workbench-title">CLI · bounded command plane<br><span style="color:var(--muted);font-weight:normal">fixed read-only allowlist</span></div>
+       <div class="workbench-title">Browser secondary · Studio snapshot <button type="button" class="terminal-toggle" data-terminal-toggle aria-expanded="true">Collapse</button><br><span style="color:var(--muted);font-weight:normal">terminal command: studio</span></div>
       <div class="workbench-main">
-        <form id="cli-form" class="cli-form"><input id="cli-input" type="text" autocomplete="off" spellcheck="false" placeholder="help"><button>Run</button></form>
-        <p class="cli-help"><code>help</code> · <code>health</code> · <code>status</code> · <code>ledger status</code> · <code>ledger verify</code> · <code>tasks</code> · <code>actors &lt;workspace-id&gt;</code> · <code>replay verify &lt;workspace-id&gt;</code></p>
-        <pre id="cli-output" class="cli-output">Bounded workbench ready. It never evaluates, spawns, shells, or accepts arbitrary routes.</pre>
+         <form id="cli-form" class="cli-form"><input id="cli-input" type="text" list="cli-commands" autocomplete="off" spellcheck="false" placeholder="studio"><datalist id="cli-commands"><option value="studio"><option value="refresh"><option value="help"></datalist><button>Run</button><button type="button" id="cli-copy">Copy</button></form>
+         <p class="cli-help"><code>studio</code> · <code>refresh</code> · <code>help</code> — browser reads only the shared Studio ViewModel.</p>
+         <pre id="cli-output" class="cli-output">Secondary projection ready. Terminal primary: flatten-workspace studio --once.</pre>
       </div>
     </footer>
   </div>
@@ -237,16 +267,14 @@
   <script>
     (function () {
       "use strict";
+      const initialStudio = {{.Studio}};
+      let currentStudio = initialStudio;
       const na = "N/A";
       const text = (value) => value === undefined || value === null || value === "" ? na : String(value);
-      const path = (object, keys) => keys.reduce((value, key) => value && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined, object);
       const setAll = (name, value) => document.querySelectorAll("[data-status='" + name + "']").forEach((node) => { node.textContent = text(value); });
       const chip = (id, label, state) => { const node = document.getElementById(id); node.textContent = label; node.className = "chip " + state; };
       const pretty = (value) => JSON.stringify(value, null, 2);
-      const shortID = (value) => {
-        const identifier = text(value);
-        return identifier === na || identifier.length <= 24 ? identifier : identifier.slice(0, 14) + "…" + identifier.slice(-8);
-      };
+      const shortID = (value) => { const id = text(value); return id === na || id.length <= 24 ? id : id.slice(0, 14) + "…" + id.slice(-8); };
 
       function taskSummary(tasks) {
         const states = {};
@@ -261,79 +289,68 @@
         document.getElementById("inspect-counts").textContent = text(files) + " / " + text(directories);
         setAll("canvas_workspace", id || "No workspace selected");
       };
+      window.selectRangerRow = function (node) {
+        document.querySelectorAll(".ranger-selected").forEach((item) => item.classList.remove("ranger-selected"));
+        if (node) node.classList.add("ranger-selected");
+      };
 
-      async function fetchJSON(route) {
-        const response = await fetch(route, { headers: { "Accept": "application/json" }, credentials: "same-origin" });
-        if (!response.ok) throw new Error(route + " returned HTTP " + response.status);
-        return response.json();
-      }
-
-      function statusValues(status, ledger, tasks) {
-        const graph = status.graph || {};
-        const actor = status.actor || {};
-        const context = status.context || {};
-        const ledgerData = status.ledger || ledger || {};
+      function renderStudio(vm) {
+		currentStudio = vm;
+        const ledger = vm.ledger || {};
+        const actor = vm.actors || {};
+        const graph = vm.graph || {};
+        const context = vm.context || {};
+        const tasks = (vm.tasks && vm.tasks.packets) || [];
         const taskState = taskSummary(tasks);
-        const headEvent = status.head_event_id || ledgerData.head_event_id;
-        const headHash = status.head_hash || ledgerData.head_hash;
-        setAll("event_count", status.event_count);
-        setAll("workspaces", status.workspaces);
+        const health = vm.health || {};
+        const workspaces = (((vm.ranger || {}).groups || []).filter((group) => group.category === "workspaces").reduce((count, group) => count + ((group.entries || []).length), 0));
         setAll("graph", text(graph.node_count) + " / " + text(graph.edge_count));
         setAll("actors", actor.active);
-        setAll("ledger_sequence", ledgerData.current_sequence);
-        setAll("ledger_verification", ledgerData.verification_status);
+        setAll("ledger_sequence", ledger.current_sequence);
+        setAll("ledger_verification", ledger.verification_status);
         setAll("actor_queue", actor.queued);
-        setAll("sources", graph.source_count);
         setAll("candidates_considered", context.candidates_considered);
         setAll("candidates_selected", context.candidates_selected);
         setAll("coverage", context.coverage);
-        setAll("head_event", headEvent);
-        setAll("head_hash", headHash);
-        setAll("task_count", tasks.length);
+        setAll("head_event", ledger.head_event_id);
+        setAll("head_hash", ledger.head_hash);
+        setAll("task_count", vm.tasks ? vm.tasks.count : 0);
         setAll("task_statuses", taskState.detail);
-        const checkpoint = status.checkpoint || {};
-        setAll("checkpoint", checkpoint.present ? "present" + (checkpoint.sequence !== undefined ? " · seq " + checkpoint.sequence : "") + (checkpoint.age ? " · " + checkpoint.age : "") : "absent");
-        return { actor: actor, ledgerData: ledgerData, headEvent: headEvent, taskState: taskState };
+        setAll("receipt_count", vm.receipts ? vm.receipts.count : 0);
+        const checkpoint = ledger.checkpoint_present ? "present" + (ledger.checkpoint_sequence !== undefined ? " · seq " + ledger.checkpoint_sequence : "") + (ledger.checkpoint_age ? " · " + ledger.checkpoint_age : "") : "absent";
+        setAll("checkpoint", checkpoint);
+        const taskMeter = document.getElementById("task-meter");
+        if (taskMeter) { const count = Math.min(128, vm.tasks ? vm.tasks.count : 0); taskMeter.style.width = (count / 128 * 100) + "%"; taskMeter.parentElement.setAttribute("aria-valuenow", String(count)); }
+        const healthState = health.available ? "ok" : "error";
+        chip("health-chip", "Health: " + (health.available ? text(health.state) : "unavailable"), healthState);
+        const ledgerState = ledger.verification_status;
+        chip("ledger-chip", "Ledger: seq " + text(ledger.current_sequence) + " · " + shortID(ledger.head_event_id), ledgerState === "ok" ? "ok" : ledgerState === "failed" || ledgerState === "error" ? "error" : "warn");
+        const replay = ledger.replay_status;
+        chip("replay-chip", "Replay: " + text(replay), replay === "ok" ? "ok" : replay === "corrupt" ? "error" : "warn");
+        chip("actor-chip", "Actors: active " + text(actor.active), "ok");
+        chip("task-chip", "Tasks: " + text(vm.tasks && vm.tasks.count) + " · " + taskState.detail, taskState.failed > 0 ? "error" : taskState.running > 0 ? "warn" : "ok");
+        chip("workspace-chip", "Workspaces: " + workspaces, "ok");
+        const unavailable = (vm.unavailable || []).map((item) => item.category + ": " + item.diagnostic).join(" · ");
+        const stamp = "Shared Studio snapshot: " + text(vm.generated_at) + (unavailable ? ". Unavailable: " + unavailable : ".");
+        document.getElementById("monitor-stamp").textContent = stamp;
+        document.getElementById("inspector-status").textContent = stamp;
+        document.getElementById("studio-snapshot").textContent = pretty(vm);
+        document.getElementById("status-error").classList.add("hidden");
       }
 
       async function refreshStatus() {
-        const error = document.getElementById("status-error");
-        const monitor = document.getElementById("monitor-stamp");
         try {
-          const [health, status, ledger, taskResponse] = await Promise.all([fetchJSON("/api/health"), fetchJSON("/api/status"), fetchJSON("/api/ledger/status"), fetchJSON("/api/tasks")]);
-          const tasks = Array.isArray(taskResponse) ? taskResponse : [];
-          const healthOK = health.status === "ok";
-          const ledgerState = path(status, ["ledger", "verification_status"]);
-          const values = statusValues(status, ledger, tasks);
-          chip("health-chip", "Health: " + (healthOK ? "ok" : text(health.status)), healthOK ? "ok" : "warn");
-          chip("ledger-chip", "Ledger: seq " + text(values.ledgerData.current_sequence) + " · " + shortID(values.headEvent), ledgerState === "ok" ? "ok" : ledgerState === "failed" || ledgerState === "error" ? "error" : "warn");
-          const replay = status.replay_status;
-          chip("replay-chip", "Replay: " + text(replay), replay === "ok" ? "ok" : replay === "corrupt" ? "error" : "warn");
-          chip("actor-chip", "Actors: active " + text(values.actor.active), "ok");
-          chip("task-chip", "Tasks: " + tasks.length + " · " + values.taskState.detail, values.taskState.failed > 0 ? "error" : values.taskState.running > 0 ? "warn" : "ok");
-          chip("workspace-chip", "Workspaces: " + text(status.workspaces), "ok");
-          document.getElementById("status-snapshot").textContent = pretty(status);
-          document.getElementById("ledger-snapshot").textContent = pretty(ledger);
-          document.getElementById("task-snapshot").textContent = pretty(tasks);
-          const stamp = "Current snapshot read " + new Date().toLocaleTimeString() + ".";
-          monitor.textContent = stamp;
-          document.getElementById("inspector-status").textContent = stamp;
-          error.classList.add("hidden");
+          const response = await fetch("/api/studio", { headers: { "Accept": "application/json" }, credentials: "same-origin" });
+          if (!response.ok) throw new Error("/api/studio returned HTTP " + response.status);
+          renderStudio(await response.json());
         } catch (err) {
-          const message = "Runtime data unavailable: " + err.message;
-          chip("health-chip", "Health: unavailable", "error");
-          chip("ledger-chip", "Ledger: unavailable", "error");
-          chip("replay-chip", "Replay: unavailable", "error");
-          chip("actor-chip", "Actors: unavailable", "error");
-          chip("task-chip", "Tasks: unavailable", "error");
-          chip("workspace-chip", "Workspaces: unavailable", "error");
-          error.textContent = message;
-          error.classList.remove("hidden");
-          monitor.textContent = message;
+          const message = "Studio snapshot unavailable: " + err.message;
+          ["health-chip", "ledger-chip", "replay-chip", "actor-chip", "task-chip", "workspace-chip"].forEach((id) => chip(id, id.replace("-chip", "") + ": unavailable", "error"));
+          document.getElementById("status-error").textContent = message;
+          document.getElementById("status-error").classList.remove("hidden");
+          document.getElementById("monitor-stamp").textContent = message;
           document.getElementById("inspector-status").textContent = message;
-          document.getElementById("status-snapshot").textContent = message;
-          document.getElementById("ledger-snapshot").textContent = message;
-          document.getElementById("task-snapshot").textContent = message;
+          document.getElementById("studio-snapshot").textContent = message;
         }
       }
 
@@ -343,30 +360,22 @@
         document.querySelectorAll("[data-view]").forEach((node) => node.classList.toggle("active", node.getAttribute("data-view") === tab));
       }));
       document.querySelectorAll("[data-refresh-status]").forEach((button) => button.addEventListener("click", refreshStatus));
-
-      const allowlistedCommands = [
-        { match: /^help$/i, route: null },
-        { match: /^health$/i, route: () => "/api/health" },
-        { match: /^status$/i, route: () => "/api/status" },
-        { match: /^ledger status$/i, route: () => "/api/ledger/status" },
-        { match: /^ledger verify$/i, route: () => "/api/ledger/verify" },
-        { match: /^tasks$/i, route: () => "/api/tasks" },
-        { match: /^actors ([^\s/]+)$/i, route: (match) => "/api/workspaces/" + encodeURIComponent(match[1]) + "/actors" },
-        { match: /^replay verify ([^\s/]+)$/i, route: (match) => "/api/workspaces/" + encodeURIComponent(match[1]) + "/replay/verify" }
-      ];
       const cli = document.getElementById("cli-form");
+      const cliInput = document.getElementById("cli-input");
+      const cliOutput = document.getElementById("cli-output");
       cli.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const raw = document.getElementById("cli-input").value.trim();
-        const output = document.getElementById("cli-output");
-        const entry = allowlistedCommands.map((command) => ({ command: command, match: raw.match(command.match) })).find((item) => item.match);
-        if (!entry) { output.textContent = "Rejected: command is outside the fixed read-only allowlist. Run help."; return; }
-        if (!entry.command.route) { output.textContent = "Allowed commands:\nhealth\nstatus\nledger status\nledger verify\ntasks\nactors <workspace-id>\nreplay verify <workspace-id>"; return; }
-        const route = entry.command.route(entry.match);
-        output.textContent = "GET " + route + " …";
-        try { output.textContent = pretty(await fetchJSON(route)); } catch (err) { output.textContent = "Unavailable: " + err.message; }
+        const command = cliInput.value.trim().toLowerCase();
+        if (command === "help") { cliOutput.textContent = "Allowed: studio, refresh, help"; return; }
+        if (command !== "studio" && command !== "refresh") { cliOutput.textContent = "Rejected: only the shared Studio projection is available here."; return; }
+        await refreshStatus();
+        cliOutput.textContent = pretty(currentStudio);
       });
-      refreshStatus();
+      document.getElementById("cli-copy").addEventListener("click", async () => { try { await navigator.clipboard.writeText(cliOutput.textContent); } catch (_) { cliOutput.focus(); } });
+      document.querySelectorAll("[data-terminal-toggle]").forEach((button) => button.addEventListener("click", () => {
+        const terminal = document.querySelector(".workbench"); const collapsed = terminal.classList.toggle("terminal-collapsed"); button.textContent = collapsed ? "Expand" : "Collapse"; button.setAttribute("aria-expanded", String(!collapsed));
+      }));
+      renderStudio(initialStudio);
     }());
   </script>
 </body>
@@ -396,12 +405,14 @@
 
 {{define "result"}}{{if .Error}}<pre class="error">{{.Error}}</pre>{{else if .Result}}<pre>{{.Result}}</pre>{{if .ReceiptID}}<p><button hx-get="/ui/receipts/{{.ReceiptID}}/diff" hx-target="#result" hx-swap="innerHTML">View diff</button></p>{{end}}{{else}}<span class="empty">No result yet.</span>{{end}}{{end}}
 
-{{define "tree"}}<ul>{{range .}}<li>{{if eq .Type "directory"}}<details><summary>▸ {{.Name}}</summary>{{template "tree" .Children}}</details>{{else}}<span class="file" hx-get="/ui/file?workspace={{.WorkspaceID}}&amp;path={{urlquery .Path}}" hx-target="#fileViewer" hx-swap="innerHTML">• {{.Name}} <small>({{.Size}} bytes)</small></span>{{end}}</li>{{end}}</ul>{{end}}
+{{define "tree"}}<ul>{{range .}}<li>{{if eq .Type "directory"}}<details><summary>▸ {{.Name}}</summary>{{template "tree" .Children}}</details>{{else}}<span class="file" role="button" tabindex="0" hx-get="/ui/file?workspace={{.WorkspaceID}}&amp;path={{urlquery .Path}}" hx-target="#fileViewer" hx-swap="innerHTML" onclick="selectRangerRow(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">• {{.Name}} <small>({{.Size}} bytes)</small></span>{{end}}</li>{{end}}</ul>{{end}}
+
+{{define "studioTree"}}<ul>{{range .}}<li>{{if eq .Type "directory"}}<details open><summary>▸ {{.Name}}</summary>{{template "studioTree" .Children}}</details>{{else}}<span class="file">• {{.Name}} <small>({{.Size}} bytes)</small></span>{{end}}</li>{{end}}</ul>{{end}}
 
 {{define "file"}}<div class="grid"><dl><dt>Path</dt><dd>{{.Path}}</dd><dt>SHA-256</dt><dd>{{.SHA256}}</dd><dt>Encoding</dt><dd>{{.Encoding}}</dd><dt>Language</dt><dd>{{.Language}}</dd><dt>Verified</dt><dd>{{.Verified}}</dd></dl><pre>{{.Content}}</pre></div>{{end}}
 
 {{define "quarantine"}}<div class="grid"><div><strong>Workspace:</strong> {{.WorkspaceID}}</div><div><strong>Quarantined entries:</strong> {{.Count}}</div><div><strong>Unsafe entry count:</strong> {{.UnsafeEntryCount}}</div></div><h3>Entries</h3><ul>{{range .Items}}<li>{{.}}</li>{{else}}<li>No quarantined entries.</li>{{end}}</ul>{{if .Blobs}}<h3>Quarantined blobs</h3><ul>{{range .Blobs}}<li><strong>{{.OriginalPath}}</strong><br>Status: {{.Status}} · Safe path: {{.SafePath}} · SHA-256: {{.SHA256}} · Size: {{.Size}}{{if eq .Status "quarantined"}}<form hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/admit" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="target_path" value="{{.SafePath}}"></div><button>Admit</button></form><form hx-post="/ui/workspaces/{{$.WorkspaceID}}/quarantine/blobs/{{.ID}}/reject" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="reason" placeholder="reason"></div><button>Reject</button></form>{{end}}</li>{{end}}</ul>{{end}}{{if .Decisions}}<h3>Decisions</h3><ul>{{range .Decisions}}<li>{{.Item}} → {{.Decision}}{{if .Reason}} ({{.Reason}}){{end}}</li>{{end}}</ul>{{end}}<h3>Record textual decision</h3><form hx-post="/ui/workspaces/{{.WorkspaceID}}/quarantine/decisions" hx-target="#result" hx-swap="innerHTML"><div class="row"><input type="text" name="authority_token" placeholder="Authority token"></div><div class="row"><input type="text" name="item" placeholder="quarantined path"></div><div class="row"><select name="decision"><option value="approve">approve</option><option value="reject">reject</option></select></div><div class="row"><input type="text" name="reason" placeholder="reason"></div><button>Record decision</button></form>{{end}}
 
-{{define "actors"}}<ul>{{range .}}<li><strong>{{.ID}}</strong> [{{.Status}}]<br>Action: {{.TriggerAction}}<br>Path: {{.Path}}<br>Lineage: {{.LineageID}}<br>Depth: {{.Depth}} · Budget: {{.Budget}}<br>Expires: {{.ExpiresAt}}</li>{{else}}<li class="empty">No actor activations.</li>{{end}}</ul>{{end}}
+{{define "actors"}}<div class="table-wrap"><table class="actor-table"><thead><tr><th>Actor</th><th>Status</th><th>Trigger / path</th><th>Lineage</th><th>Depth / budget</th><th>Expires</th></tr></thead><tbody>{{range .}}<tr><td>{{.ID}}</td><td>{{.Status}}</td><td>{{.TriggerAction}}<br><span class="metric-detail">{{.Path}}</span></td><td>{{.LineageID}}</td><td>{{.Depth}} / {{.Budget}}</td><td>{{.ExpiresAt}}</td></tr>{{else}}<tr><td colspan="6" class="empty">No actor activations.</td></tr>{{end}}</tbody></table></div>{{end}}
 
 {{define "diff"}}<div>Receipt: {{.ReceiptID}}<br>Path: {{.Path}}</div><pre>{{.Diff}}</pre>{{end}}

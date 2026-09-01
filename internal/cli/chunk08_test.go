@@ -16,6 +16,8 @@ import (
 	"flatten-workspace/internal/observability"
 	"flatten-workspace/internal/progress"
 	"flatten-workspace/internal/scoring"
+	"flatten-workspace/internal/server"
+	"flatten-workspace/internal/studio"
 )
 
 func captureStdout(fn func()) string {
@@ -420,6 +422,117 @@ func TestCH08_CLIHelpers(t *testing.T) {
 			t.Fatal("unknown cmd should fail")
 		}
 	})
+}
+
+func TestStudioCommandParsingAndOnceUsesOnlyStudioEndpoint(t *testing.T) {
+	for _, input := range []string{"monitor", ":ranger", "refresh", "select 2", ":quit"} {
+		if _, err := parseStudioCommand(input); err != nil {
+			t.Errorf("parseStudioCommand(%q): %v", input, err)
+		}
+	}
+	for _, input := range []string{"", "select -1", "status", "refresh now"} {
+		if _, err := parseStudioCommand(input); err == nil {
+			t.Errorf("parseStudioCommand(%q) unexpectedly succeeded", input)
+		}
+	}
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/studio" {
+			t.Errorf("unexpected endpoint %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"generated_at": "2023-11-14T22:13:20Z", "health": map[string]any{"available": true, "state": "ok"},
+			"ledger": map[string]any{}, "actors": map[string]any{}, "graph": map[string]any{}, "context": map[string]any{},
+			"capabilities": []any{}, "tasks": map[string]any{"count": 0, "packets": []any{}}, "progress_receipts": map[string]any{"count": 0, "packets": []any{}}, "receipts": map[string]any{"count": 0, "packets": []any{}}, "ranger": map[string]any{"groups": []any{}, "initial_tree": []any{}}, "unavailable": []any{},
+		})
+	}))
+	defer srv.Close()
+	t.Setenv("ADDR", srv.URL)
+	out := captureStdout(func() {
+		if code := Run([]string{"studio", "--once"}); code != 0 {
+			t.Fatalf("studio --once code = %d", code)
+		}
+	})
+	if requests != 1 {
+		t.Fatalf("Studio requests = %d, want 1", requests)
+	}
+	if !strings.Contains(out, "STUDIO · MONITOR") || !strings.Contains(out, "STUDIO · RANGER") {
+		t.Fatalf("unexpected Studio output: %s", out)
+	}
+	for _, category := range []string{"actors", "events", "evidence_provenance", "files", "graph_nodes", "receipts", "source_nodes", "tasks", "workspaces"} {
+		if !strings.Contains(out, category) {
+			t.Errorf("Studio Ranger output missing category %q: %s", category, out)
+		}
+	}
+}
+
+func TestStudioReceiptSentinelsNeverReachSnapshotOrOnceOutput(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("RUST_LEDGER_URL", "")
+	s := server.New()
+	started := time.Unix(1700000000, 0).UTC()
+	receipt := progress.ReceiptPacket{
+		TaskID:          "receipt-task",
+		Operation:       progress.OperationQuery,
+		StartedAt:       started,
+		FinishedAt:      started.Add(time.Second),
+		Elapsed:         "1s",
+		FinalStatus:     progress.StatusFailed,
+		UnitsProcessed:  3,
+		ActorsActivated: 2,
+		ActorsFailed:    1,
+		Warnings:        []string{"WARNING_SENTINEL_MUST_NOT_REACH_STUDIO"},
+		Errors:          []string{"ERROR_SENTINEL_MUST_NOT_REACH_STUDIO"},
+	}
+	if err := s.ProgressReceipts.Save(receipt); err != nil {
+		t.Fatalf("save source receipt: %v", err)
+	}
+
+	httpServer := httptest.NewServer(s.Handler())
+	defer httpServer.Close()
+	response, err := http.Get(httpServer.URL + "/api/studio")
+	if err != nil {
+		t.Fatalf("GET /api/studio: %v", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read Studio response: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/studio status = %d: %s", response.StatusCode, body)
+	}
+	for _, sentinel := range []string{"WARNING_SENTINEL_MUST_NOT_REACH_STUDIO", "ERROR_SENTINEL_MUST_NOT_REACH_STUDIO"} {
+		if strings.Contains(string(body), sentinel) {
+			t.Fatalf("Studio JSON leaked receipt sentinel %q: %s", sentinel, body)
+		}
+	}
+	var vm studio.ViewModel
+	if err := json.Unmarshal(body, &vm); err != nil {
+		t.Fatalf("decode Studio ViewModel: %v", err)
+	}
+	if len(vm.ProgressReceipts.Packets) != 1 {
+		t.Fatalf("Studio progress receipt count = %d, want 1", len(vm.ProgressReceipts.Packets))
+	}
+	summary := vm.ProgressReceipts.Packets[0]
+	if summary.TaskID != receipt.TaskID || summary.DurableRefCount != 0 || summary.UnitsProcessed != receipt.UnitsProcessed {
+		t.Fatalf("unexpected safe receipt summary: %+v", summary)
+	}
+
+	t.Setenv("ADDR", httpServer.URL)
+	once := captureStdout(func() {
+		if code := Run([]string{"studio", "--once"}); code != 0 {
+			t.Fatalf("studio --once code = %d", code)
+		}
+	})
+	for _, sentinel := range []string{"WARNING_SENTINEL_MUST_NOT_REACH_STUDIO", "ERROR_SENTINEL_MUST_NOT_REACH_STUDIO"} {
+		if strings.Contains(once, sentinel) {
+			t.Fatalf("studio --once leaked receipt sentinel %q: %s", sentinel, once)
+		}
+	}
 }
 
 // Helpers for CH08

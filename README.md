@@ -59,10 +59,9 @@ admission fails closed; the local Go JSONL is only a Rust-acknowledged mirror.
   telemetry only.
 - Hash-chained Rust accepted-event evidence, strict ledger startup validation,
   verification, and checkpoints.
-- Progress/task views, receipts, replay/snapshot verification, and a
-  server-rendered `/ui` control surface. **Flatten Workspace Studio** is the
-  operator-facing HTMX application; Cann-o-Call remains the runtime/project
-  behind its bounded controls.
+- Progress/task views, receipts, replay/snapshot verification, and a shared
+  Studio ViewModel. **Flatten Workspace Studio** is terminal-first through the
+  Go TUI; `/ui` is its secondary HTMX projection, not a competing status model.
 - A bounded reference/native membrane with pre-allowlisted Go operations. It
   has no canonical-state authority.
 
@@ -164,6 +163,23 @@ that directory and `/tmp/cann-o-call-demo` when finished.
 | `AUTHORITY_TOKEN` | Token used by guarded workspace/checkpoint operations through `X-Authority-Token` or form input. |
 | `ALLOW_ABSOLUTE_ROOT` | Only `true` permits absolute materialization roots. |
 
+### Studio surfaces
+
+The primary operator surface is the terminal Studio. It requests only the
+read-only `GET /api/studio` ViewModel; it does not create authority, invoke a
+shell, or fabricate offline telemetry.
+
+```text
+flatten-workspace studio --once
+flatten-workspace studio
+```
+
+Interactive commands are `monitor`, `ranger`, `refresh`, `select <index>`,
+`help`, and `quit` (the same commands may be prefixed with `:`). `--once`
+prints a plain-text full Monitor and three-column Ranger snapshot for scripts.
+The server-rendered `/ui` page is a secondary HTMX projection of that same
+ViewModel; safe existing workspace/tree/file drilldown routes remain available.
+
 ## HTTP and CLI surface
 
 The server registers, among others, these operator-facing routes:
@@ -172,6 +188,7 @@ The server registers, among others, these operator-facing routes:
 | --- | --- | --- |
 | `GET` | `/api/health` | Health response. |
 | `GET` | `/api/status` | Aggregated ledger, graph, actor, context, and workspace status. |
+| `GET` | `/api/studio` | Shared read-only Studio ViewModel for terminal and browser. |
 | `POST` | `/api/ingest` | Ingest source bytes/envelope or multipart upload into the ingest/graph path. |
 | `POST` | `/api/query` | Deterministic query, selection, context-packet, and actor-result path. |
 | `GET` | `/api/ledger/status`, `/api/ledger/verify` | Ledger status and local/sidecar verification. |
@@ -191,6 +208,7 @@ ledger status | verify
 replay verify [--workspace <id>]
 snapshot <workspaceID>
 task status <id> | task list
+studio [--once]
 ```
 
 Use `--json` (or `-j`) with any CLI command. The CLI can report offline

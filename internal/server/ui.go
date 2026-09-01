@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"unicode/utf8"
 
+	"flatten-workspace/internal/studio"
 	"flatten-workspace/internal/workspace"
 )
 
@@ -31,6 +32,8 @@ type uiFile struct {
 }
 
 type uiData struct {
+	Theme      StudioTheme
+	Studio     *studio.ViewModel
 	Workspaces []workspace.Summary
 	Workspace  *workspace.Summary
 	Binding    *workspace.WorkspaceBinding
@@ -39,6 +42,38 @@ type uiData struct {
 	Error      string
 	File       *uiFile
 	ReceiptID  string
+}
+
+// StudioTheme is presentation-only. Keeping the palette typed and supplied by
+// the server makes the embedded page's token values auditable in one place.
+type StudioTheme struct {
+	Void       string `json:"void"`
+	Surface    string `json:"surface"`
+	Raised     string `json:"raised"`
+	Inset      string `json:"inset"`
+	Text       string `json:"text"`
+	Muted      string `json:"muted"`
+	Line       string `json:"line"`
+	Mint       string `json:"mint"`
+	Cyan       string `json:"cyan"`
+	Periwinkle string `json:"periwinkle"`
+	Yellow     string `json:"yellow"`
+	Red        string `json:"red"`
+}
+
+var studioTheme = StudioTheme{
+	Void:       "#0B0F1A",
+	Surface:    "#121827",
+	Raised:     "#1D2538",
+	Inset:      "#080C14",
+	Text:       "#E6F7FF",
+	Muted:      "#A6B5C7",
+	Line:       "#40506A",
+	Mint:       "#00FFD1",
+	Cyan:       "#33C7FF",
+	Periwinkle: "#7A88FF",
+	Yellow:     "#FFD84D",
+	Red:        "#FF5A5A",
 }
 
 func (s *Server) renderAny(w http.ResponseWriter, name string, data any) {
@@ -50,6 +85,11 @@ func (s *Server) renderAny(w http.ResponseWriter, name string, data any) {
 }
 
 func (s *Server) renderPage(w http.ResponseWriter, data uiData) {
+	data.Theme = studioTheme
+	if data.Studio == nil {
+		snapshot := s.studioSnapshot()
+		data.Studio = &snapshot
+	}
 	s.renderAny(w, "page", data)
 }
 

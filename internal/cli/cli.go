@@ -1,17 +1,20 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"flatten-workspace/internal/observability"
 	"flatten-workspace/internal/progress"
+	"flatten-workspace/internal/studio"
 )
 
 func Run(args []string) int {
@@ -53,6 +56,8 @@ func Run(args []string) int {
 		return handleSnapshot(jsonMode, rest)
 	case "task":
 		return handleTask(jsonMode, rest)
+	case "studio":
+		return handleStudio(jsonMode, rest)
 	case "help", "--help", "-h":
 		printHelp(os.Stdout)
 		return 0
@@ -77,6 +82,137 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  snapshot <workspaceID> [--json]")
 	fmt.Fprintln(w, "  task status <id> [--json]")
 	fmt.Fprintln(w, "  task list [--json]")
+	fmt.Fprintln(w, "  studio [--once] [--json]")
+}
+
+type studioCommand struct {
+	name  string
+	index int
+}
+
+// parseStudioCommand accepts only the terminal Studio's fixed local controls.
+// A leading colon is syntax only; input can never become a route or command.
+func parseStudioCommand(line string) (studioCommand, error) {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, ":")
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return studioCommand{}, fmt.Errorf("command required")
+	}
+	switch fields[0] {
+	case "monitor", "ranger", "refresh", "help", "quit":
+		if len(fields) != 1 {
+			return studioCommand{}, fmt.Errorf("%s takes no arguments", fields[0])
+		}
+		return studioCommand{name: fields[0]}, nil
+	case "select":
+		if len(fields) != 2 {
+			return studioCommand{}, fmt.Errorf("select requires an entry index")
+		}
+		index, err := strconv.Atoi(fields[1])
+		if err != nil || index < 0 {
+			return studioCommand{}, fmt.Errorf("select index must be a non-negative integer")
+		}
+		return studioCommand{name: "select", index: index}, nil
+	default:
+		return studioCommand{}, fmt.Errorf("unknown Studio command %q; run help", fields[0])
+	}
+}
+
+func handleStudio(jsonMode bool, args []string) int {
+	once := false
+	for _, arg := range args {
+		if arg == "--once" {
+			once = true
+			continue
+		}
+		return outputError(progress.ErrInvalidInput, fmt.Sprintf("unknown studio option %q", arg), nil, jsonMode)
+	}
+	vm, err := fetchStudio()
+	if err != nil {
+		return outputError(progress.ErrDurableRecorderUnavailable, "Studio server unavailable; GET /api/studio failed", err, jsonMode)
+	}
+	if once {
+		fmt.Fprintln(os.Stdout, studio.RenderOnce(vm))
+		return 0
+	}
+	if jsonMode {
+		outputJSON(vm, true)
+		return 0
+	}
+
+	tab, selected := "monitor", 0
+	ansi := isTerminal(os.Stdout)
+	printStudioTab(vm, tab, selected, ansi)
+	fmt.Fprintln(os.Stdout, "Commands: monitor, ranger, refresh, select <index>, help, quit. Prefix with : is accepted.")
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		if ansi {
+			fmt.Fprint(os.Stdout, "\x1b[36mstudio>\x1b[0m ")
+		}
+		if !scanner.Scan() {
+			return 0
+		}
+		command, err := parseStudioCommand(scanner.Text())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "studio: %v\n", err)
+			continue
+		}
+		switch command.name {
+		case "quit":
+			return 0
+		case "help":
+			fmt.Fprintln(os.Stdout, "monitor | ranger | refresh | select <index> | help | quit")
+		case "monitor", "ranger":
+			tab = command.name
+			printStudioTab(vm, tab, selected, ansi)
+		case "select":
+			selected = command.index
+			if tab == "ranger" {
+				printStudioTab(vm, tab, selected, ansi)
+			}
+		case "refresh":
+			updated, fetchErr := fetchStudio()
+			if fetchErr != nil {
+				fmt.Fprintf(os.Stderr, "studio: refresh unavailable: %v\n", fetchErr)
+				continue
+			}
+			vm = updated
+			printStudioTab(vm, tab, selected, ansi)
+		}
+	}
+}
+
+func fetchStudio() (studio.ViewModel, error) {
+	b, code, err := httpGet("/api/studio")
+	if err != nil {
+		return studio.ViewModel{}, err
+	}
+	if code != http.StatusOK {
+		return studio.ViewModel{}, fmt.Errorf("GET /api/studio returned HTTP %d", code)
+	}
+	var vm studio.ViewModel
+	if err := json.Unmarshal(b, &vm); err != nil {
+		return studio.ViewModel{}, fmt.Errorf("decode Studio snapshot: %w", err)
+	}
+	vm.Normalize()
+	return vm, nil
+}
+
+func printStudioTab(vm studio.ViewModel, tab string, selected int, ansi bool) {
+	if ansi {
+		fmt.Fprint(os.Stdout, "\x1b[2J\x1b[H")
+	}
+	if tab == "ranger" {
+		fmt.Fprintln(os.Stdout, studio.RenderRanger(vm, selected))
+		return
+	}
+	fmt.Fprintln(os.Stdout, studio.RenderMonitor(vm))
+}
+
+func isTerminal(file *os.File) bool {
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 func serverBase() string {

@@ -187,6 +187,7 @@ func New() *Server {
 	mux.HandleFunc("GET /api/tasks", s.handleListTasks)
 	mux.HandleFunc("GET /api/tasks/{id}", s.handleGetTask)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
+	mux.HandleFunc("GET /api/studio", s.handleStudio)
 	mux.HandleFunc("GET /api/ledger/status", s.handleLedgerStatus)
 	mux.HandleFunc("GET /api/orchestrator/status", s.handleOrchestratorStatus)
 	mux.HandleFunc("GET /api/query/status", s.handleQueryStatus)
