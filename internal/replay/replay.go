@@ -2,10 +2,12 @@ package replay
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 
 	"flatten-workspace/internal/eventlog"
 	"flatten-workspace/internal/projection"
+	"flatten-workspace/internal/transition"
 )
 
 var mutationActions = map[string]bool{
@@ -23,17 +25,14 @@ func BuildLedgerProjectionFromEvents(
 	files := map[string][]byte{}
 
 	for _, ev := range events {
-		if ev.WorkspaceID != workspaceID {
+		action, details, eventWorkspaceID, ok := legacyTransition(ev)
+		if !ok || eventWorkspaceID != workspaceID {
 			continue
 		}
 
-		if ev.Status != "accepted" {
-			continue
-		}
-
-		switch ev.Action {
+		switch action {
 		case "build_ledger.baseline.recorded":
-			if rawFiles, ok := ev.Details["files"].(map[string]any); ok {
+			if rawFiles, ok := details["files"].(map[string]any); ok {
 				for p, raw := range rawFiles {
 					b64, ok := raw.(string)
 					if !ok {
@@ -54,12 +53,12 @@ func BuildLedgerProjectionFromEvents(
 			}
 
 		default:
-			if !mutationActions[ev.Action] {
+			if !mutationActions[action] {
 				continue
 			}
 
-			p, _ := ev.Details["path"].(string)
-			b64, _ := ev.Details["content_base64"].(string)
+			p, _ := details["path"].(string)
+			b64, _ := details["content_base64"].(string)
 
 			if p == "" || b64 == "" {
 				continue
@@ -79,4 +78,39 @@ func BuildLedgerProjectionFromEvents(
 	}
 
 	return projection.BuildFromFiles(files), nil
+}
+
+// legacyTransition preserves CHUNK-02 event replay while decoding the typed
+// authority envelope used by new server mutations. Opaque low-level events
+// have neither form and therefore cannot change this projection.
+func legacyTransition(ev eventlog.Event) (action string, details map[string]any, workspaceID string, ok bool) {
+	if ev.Type != "transition.authority.accepted" {
+		if ev.Status != "accepted" {
+			return "", nil, "", false
+		}
+		return ev.Action, ev.Details, ev.WorkspaceID, true
+	}
+	if ev.Status != "accepted" || ev.Action != "transition.accepted" {
+		return "", nil, "", false
+	}
+	raw, exists := ev.Details["accepted_transition"]
+	if !exists {
+		return "", nil, "", false
+	}
+	payload, err := json.Marshal(raw)
+	if err != nil {
+		return "", nil, "", false
+	}
+	var accepted transition.AcceptedTransition
+	if err := json.Unmarshal(payload, &accepted); err != nil {
+		return "", nil, "", false
+	}
+	var result struct {
+		Action  string         `json:"legacy_action"`
+		Details map[string]any `json:"legacy_details"`
+	}
+	if err := json.Unmarshal(accepted.Proposal.ResultData, &result); err != nil || result.Action == "" {
+		return "", nil, "", false
+	}
+	return result.Action, result.Details, accepted.Proposal.Entity, true
 }

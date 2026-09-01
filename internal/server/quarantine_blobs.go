@@ -50,7 +50,7 @@ func (s *Server) opAdmitQuarantineBlob(
 
 	oldHash := fileSHA(ws, targetPath)
 
-	f, err := workspace.UpsertFile(ws, targetPath, blob.Data)
+	f, err := candidateUpsert(ws, targetPath, blob.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +70,9 @@ func (s *Server) opAdmitQuarantineBlob(
 		},
 	)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := workspace.UpsertFile(ws, targetPath, blob.Data); err != nil {
 		return nil, err
 	}
 

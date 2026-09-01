@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"path"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"flatten-workspace/internal/projection"
 	"flatten-workspace/internal/receipts"
 	"flatten-workspace/internal/replay"
+	"flatten-workspace/internal/transition"
 	"flatten-workspace/internal/workspace"
 )
 
@@ -156,6 +158,16 @@ func VerifyLoaded(loaded *Loaded, workspaceID string) (map[string]any, error) {
 	}
 
 	currentLedger := projection.BuildFromFiles(ledgerFiles)
+
+	for _, event := range loaded.Events {
+		if event.Type != "transition.authority.accepted" {
+			continue
+		}
+		if _, err := transition.Rebuild(loaded.Events, nil, nil); err != nil {
+			return nil, fmt.Errorf("validate typed authority history: %w", err)
+		}
+		break
+	}
 
 	replayed, replayErr := replay.BuildLedgerProjectionFromEvents(loaded.Events, workspaceID)
 

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"flatten-workspace/internal/policy"
 	"flatten-workspace/internal/quarantine"
 	"flatten-workspace/internal/workspace"
 )
@@ -59,16 +58,6 @@ func (s *Server) syncWorkspaceQuarantine(ws *workspace.Workspace) {
 
 		blobs = append(blobs, blob)
 
-		if item.Status == "approved" && item.TargetPath != "" && len(item.Data) > 0 {
-			if err := policy.RejectIfSecrets(item.Data); err == nil {
-				_, _ = workspace.UpsertFile(ws, item.TargetPath, item.Data)
-			} else {
-				ws.Issues = append(
-					ws.Issues,
-					"previously approved quarantine blob rejected by current secret policy: "+item.ID,
-				)
-			}
-		}
 	}
 
 	ws.QuarantinedBlobs = blobs

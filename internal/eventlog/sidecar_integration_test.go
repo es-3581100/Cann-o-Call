@@ -79,6 +79,12 @@ func TestGoApprovedEventUsesLiveRustSidecarAndSurvivesRestart(t *testing.T) {
 	if len(firstRust.Events) != 1 || firstRust.Events[0].Seq != 1 || firstRust.Events[0].PrevHash != "genesis" {
 		t.Fatalf("first Rust record is not contiguous: %#v", firstRust.Events)
 	}
+	if first.RustAck == nil || first.RustAck.ID != first.ID || first.RustAck.Sequence != int64(firstRust.Events[0].Seq) || first.RustAck.Hash != firstRust.Events[0].Hash {
+		t.Fatalf("Go event did not bind live Rust acknowledgement: event=%#v rust=%#v", first.RustAck, firstRust.Events[0])
+	}
+	if _, err := service.CheckedEvents(); err != nil {
+		t.Fatalf("Rust acknowledgement invalidated Go hash chain: %v", err)
+	}
 	var forwardedFirst Event
 	if err := json.Unmarshal(firstRust.Events[0].Evidence, &forwardedFirst); err != nil {
 		t.Fatalf("decode Rust evidence carrying Go event: %v", err)

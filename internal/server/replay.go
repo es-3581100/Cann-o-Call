@@ -6,13 +6,19 @@ import (
 
 	"flatten-workspace/internal/projection"
 	"flatten-workspace/internal/replay"
+	"flatten-workspace/internal/transition"
 	"flatten-workspace/internal/workspace"
 )
 
 func (s *Server) opVerifyReplay(ws *workspace.Workspace) (map[string]any, error) {
-	events, err := s.Events.List()
+	events, err := s.Events.CheckedEvents()
 	if err != nil {
 		return nil, err
+	}
+	// Validate the typed authority stream before interpreting legacy build-ledger
+	// details. Legacy CHUNK-02 events remain valid inputs to the latter replay.
+	if _, err := transition.Rebuild(events, s.Events, nil); err != nil {
+		return nil, fmt.Errorf("rebuild typed authority stream: %w", err)
 	}
 
 	current := projection.BuildLedgerFromWorkspace(ws)

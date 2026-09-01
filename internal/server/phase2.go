@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"flatten-workspace/internal/eventlog"
 	"flatten-workspace/internal/ids"
 	"flatten-workspace/internal/materialize"
 	"flatten-workspace/internal/receipts"
+	"flatten-workspace/internal/transition"
 	"flatten-workspace/internal/workspace"
 
 	"gopkg.in/yaml.v3"
@@ -27,7 +27,7 @@ func (s *Server) requireAuthority(r *http.Request) error {
 		token = r.FormValue("authority_token")
 	}
 
-	return s.Authority.Check(token)
+	return s.AccessAuthority.Check(token)
 }
 
 func (s *Server) recordTransition(
@@ -38,32 +38,14 @@ func (s *Server) recordTransition(
 	files []string,
 	details map[string]any,
 ) (*receipts.Receipt, error) {
-	actor := r.Header.Get("X-Actor")
-	if actor == "" {
-		actor = "api"
-	}
-
 	receiptID := ids.New("receipt")
-	eventID := ids.New("event")
 
 	if details == nil {
 		details = map[string]any{}
 	}
 
-	details["authority_source"] = "explicit_authority_token"
-
-	ev := eventlog.Event{
-		ID:          eventID,
-		Type:        "transition",
-		WorkspaceID: ws.ID,
-		Actor:       actor,
-		Action:      action,
-		Status:      "accepted",
-		Details:     details,
-		ReceiptID:   receiptID,
-	}
-
-	savedEvent, err := s.Events.Append(ev)
+	details = withAuthoritySource(details)
+	accepted, err := s.proposeTransition(r, ws.ID, action, details)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +57,7 @@ func (s *Server) recordTransition(
 		Objective:       objective,
 		Status:          "delivered",
 		AuthoritySource: "explicit_authority_token",
-		EventID:         savedEvent.ID,
+		EventID:         accepted.Durable.EventID,
 		FilesChanged:    files,
 		Details:         details,
 	}
@@ -88,6 +70,53 @@ func (s *Server) recordTransition(
 	s.maybeActivateActor(ws.ID, action, details)
 
 	return &savedReceipt, nil
+}
+
+func withAuthoritySource(details map[string]any) map[string]any {
+	copy := make(map[string]any, len(details)+1)
+	for key, value := range details {
+		copy[key] = value
+	}
+	copy["authority_source"] = "explicit_authority_token"
+	return copy
+}
+
+func requestField(r *http.Request, header, fallback string) string {
+	if value := r.Header.Get(header); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func (s *Server) proposeTransition(r *http.Request, workspaceID, action string, details map[string]any) (transition.AcceptedTransition, error) {
+	result, err := json.Marshal(map[string]any{
+		"legacy_action":  action,
+		"legacy_details": details,
+	})
+	if err != nil {
+		return transition.AcceptedTransition{}, fmt.Errorf("encode transition result: %w", err)
+	}
+	transitionID := requestField(r, "X-Transition-ID", ids.New("transition"))
+	proposalID := requestField(r, "X-Proposal-ID", transitionID+":proposal")
+	requestID := requestField(r, "X-Request-ID", r.Method+":"+r.URL.Path+":"+workspaceID+":"+action)
+	operation := "upsert"
+	if strings.HasPrefix(action, "workspace.imported_") {
+		operation = "import"
+	}
+	entity := workspaceID
+	if entity == "" {
+		entity = "global"
+	}
+	return s.Authority.Propose(transition.ProposedTransition{
+		TransitionID: transitionID,
+		ProposalID:   proposalID,
+		RequestID:    requestID,
+		Prior:        s.Authority.Projection().Ref(),
+		Operation:    operation,
+		Entity:       entity,
+		Node:         action,
+		ResultData:   result,
+	})
 }
 
 func (s *Server) createWorkspaceFromZip(w http.ResponseWriter, r *http.Request) {
@@ -135,8 +164,6 @@ func (s *Server) createWorkspaceFromZip(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	s.store.Add(ws)
-
 	receipt, err := s.recordTransition(
 		r,
 		ws,
@@ -154,6 +181,7 @@ func (s *Server) createWorkspaceFromZip(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("record zip import transition: %w", err))
 		return
 	}
+	s.store.Add(ws)
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"summary": ws.Summary(),
@@ -319,7 +347,7 @@ func (s *Server) updateBuildLedgerState(w http.ResponseWriter, r *http.Request) 
 	p := "build-ledger/current/state.yaml"
 	oldHash := fileSHA(ws, p)
 
-	f, err := workspace.UpsertFile(ws, p, body)
+	f, err := candidateUpsert(ws, p, body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -340,6 +368,10 @@ func (s *Server) updateBuildLedgerState(w http.ResponseWriter, r *http.Request) 
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("record state update transition: %w", err))
+		return
+	}
+	if _, err := workspace.UpsertFile(ws, p, body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -409,7 +441,7 @@ func (s *Server) appendBuildLedgerEvent(w http.ResponseWriter, r *http.Request) 
 	p := "build-ledger/events/ledger.jsonl"
 	oldHash := fileSHA(ws, p)
 
-	f, err := workspace.AppendToFile(ws, p, line)
+	f, err := candidateAppend(ws, p, line)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -430,6 +462,10 @@ func (s *Server) appendBuildLedgerEvent(w http.ResponseWriter, r *http.Request) 
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("record event append transition: %w", err))
+		return
+	}
+	if _, err := workspace.AppendToFile(ws, p, line); err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -515,7 +551,7 @@ func (s *Server) createBuildLedgerDocument(
 	p := fmt.Sprintf("build-ledger/%s/%s.yaml", dir, docID)
 	oldHash := fileSHA(ws, p)
 
-	f, err := workspace.UpsertFile(ws, p, out)
+	f, err := candidateUpsert(ws, p, out)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -536,6 +572,10 @@ func (s *Server) createBuildLedgerDocument(
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("record build-ledger document transition: %w", err))
+		return
+	}
+	if _, err := workspace.UpsertFile(ws, p, out); err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 

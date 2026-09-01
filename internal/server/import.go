@@ -85,8 +85,6 @@ func (s *Server) opImportEnvelope(
 		return nil, nil, err
 	}
 
-	s.store.Add(ws)
-
 	importReceipt, err := s.recordTransition(
 		r,
 		ws,
@@ -108,6 +106,9 @@ func (s *Server) opImportEnvelope(
 	if err := s.recordBuildLedgerBaseline(r, ws); err != nil {
 		return nil, nil, err
 	}
+	// A workspace becomes visible only after every durable import transition,
+	// including its build-ledger baseline, has been admitted.
+	s.store.Add(ws)
 
 	return ws, importReceipt, nil
 }

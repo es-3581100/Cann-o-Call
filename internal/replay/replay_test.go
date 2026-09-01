@@ -2,14 +2,53 @@ package replay
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"testing"
 
 	"flatten-workspace/internal/eventlog"
 	"flatten-workspace/internal/projection"
+	"flatten-workspace/internal/transition"
 )
 
 func b64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
+}
+
+func TestReplayUnderstandsAuthorityEnvelopeAndIgnoresOpaqueEvents(t *testing.T) {
+	path := "build-ledger/current/state.yaml"
+	data := []byte("id: state-1\ntype: project\nrevision: 1\nstatus: active\n")
+	accepted := transition.AcceptedTransition{Proposal: transition.ProposedTransition{
+		Entity: "ws-1",
+		ResultData: mustJSON(t, map[string]any{
+			"legacy_action": "build_ledger.state.updated",
+			"legacy_details": map[string]any{
+				"path":           path,
+				"content_base64": b64(data),
+			},
+		}),
+	}}
+	payload := mustJSON(t, accepted)
+	events := []eventlog.Event{
+		{ID: "opaque", Status: "accepted", Action: "build_ledger.state.updated"},
+		{Type: "transition.authority.accepted", Status: "accepted", Action: "transition.accepted", Details: map[string]any{"accepted_transition": json.RawMessage(payload)}},
+	}
+	got, err := BuildLedgerProjectionFromEvents(events, "ws-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := projection.BuildFromFiles(map[string][]byte{path: data})
+	if !projection.Equivalent(got, want) {
+		t.Fatalf("authority envelope not replayed: got %s want %s", got.Hash, want.Hash)
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func TestReplayEquivalence(t *testing.T) {

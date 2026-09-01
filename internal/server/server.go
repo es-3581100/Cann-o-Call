@@ -22,6 +22,7 @@ import (
 	"flatten-workspace/internal/eventlog"
 	"flatten-workspace/internal/quarantine"
 	"flatten-workspace/internal/receipts"
+	"flatten-workspace/internal/transition"
 	"flatten-workspace/internal/workspace"
 	"flatten-workspace/web"
 )
@@ -60,11 +61,14 @@ func (s *Store) Summaries() []workspace.Summary {
 }
 
 type Server struct {
-	store             *Store
-	handler           http.Handler
-	Events            *eventlog.Service
-	Receipts          *receipts.Service
-	Authority         *authority.Service
+	store    *Store
+	handler  http.Handler
+	Events   *eventlog.Service
+	Receipts *receipts.Service
+	// Authority is the semantic transition authority. Eventlog is only its
+	// durable opaque writer; it must not be used directly by handlers.
+	Authority         *transition.Authority
+	AccessAuthority   *authority.Service
 	DataDir           string
 	AllowAbsoluteRoot bool
 	Templates         *template.Template
@@ -89,6 +93,10 @@ func New() *Server {
 	if err != nil {
 		panic(err)
 	}
+	semanticAuthority, err := transition.NewFromEventLog(events, nil)
+	if err != nil {
+		panic(fmt.Errorf("rebuild transition authority: %w", err))
+	}
 
 	actorMax := 16
 	if v := os.Getenv("ACTOR_MAX_COUNT"); v != "" {
@@ -107,7 +115,8 @@ func New() *Server {
 		store:             NewStore(),
 		Events:            events,
 		Receipts:          receiptStore,
-		Authority:         authority.New(os.Getenv("AUTHORITY_TOKEN")),
+		Authority:         semanticAuthority,
+		AccessAuthority:   authority.New(os.Getenv("AUTHORITY_TOKEN")),
 		DataDir:           dataDir,
 		AllowAbsoluteRoot: os.Getenv("ALLOW_ABSOLUTE_ROOT") == "true",
 		Templates:         template.Must(template.ParseFS(web.FS, "templates/*.html")),
@@ -207,6 +216,14 @@ func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	ws, err := workspace.Parse(data)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err)
+		return
+	}
+	if _, err := s.recordTransition(r, ws, "workspace.imported_envelope", "Import flatten-workspace/v1 envelope", nil, map[string]any{
+		"source_name":     ws.Source.Name,
+		"file_count":      ws.FileCount,
+		"directory_count": ws.DirectoryCount,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("record envelope import transition: %w", err))
 		return
 	}
 	s.store.Add(ws)

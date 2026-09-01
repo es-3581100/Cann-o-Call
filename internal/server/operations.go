@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"flatten-workspace/internal/buildledger"
-	"flatten-workspace/internal/eventlog"
 	"flatten-workspace/internal/ids"
 	"flatten-workspace/internal/materialize"
 	"flatten-workspace/internal/policy"
@@ -34,8 +33,6 @@ func (s *Server) opImportZip(
 		return nil, nil, err
 	}
 
-	s.syncWorkspaceQuarantine(ws)
-
 	buildLedgerFiles := map[string]string{}
 	fileList := []string{}
 
@@ -54,8 +51,6 @@ func (s *Server) opImportZip(
 	}
 
 	sort.Strings(fileList)
-
-	s.store.Add(ws)
 
 	importReceipt, err := s.recordTransition(
 		r,
@@ -90,6 +85,9 @@ func (s *Server) opImportZip(
 			return nil, nil, err
 		}
 	}
+	// Do not expose a partially admitted import if the durable baseline failed.
+	s.store.Add(ws)
+	s.syncWorkspaceQuarantine(ws)
 
 	return ws, importReceipt, nil
 }
@@ -129,28 +127,56 @@ func (s *Server) opMaterialize(
 			)
 		}
 	}
-
-	written, err := materialize.WriteWorkspace(ws, root, s.AllowAbsoluteRoot)
-	if err != nil {
-		return "", nil, nil, err
+	// WriteWorkspace retains its direct-call absolute-path guard. The server has
+	// already verified this normalized absolute root is inside its controlled
+	// data directory, so pass an equivalent relative path to that lower-level
+	// writer without weakening its public guard for other callers.
+	writeRoot := root
+	if !s.AllowAbsoluteRoot && filepath.IsAbs(root) {
+		workingDir, err := os.Getwd()
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("resolve materialization working directory: %w", err)
+		}
+		writeRoot, err = filepath.Rel(workingDir, root)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("relativize controlled materialization root: %w", err)
+		}
 	}
 
+	// Materialization is an explicitly authorized external filesystem effect,
+	// not a semantic workspace projection. Prepare its deterministic target list,
+	// durably admit authorization, then apply the effect. A later filesystem
+	// failure cannot retract that durable authorization and is returned to caller.
+	planned := plannedMaterializationPaths(ws, root)
 	rec, err := s.recordTransition(
 		r,
 		ws,
 		"workspace.materialized",
 		"Materialize workspace to disk under explicit authority",
-		written,
+		planned,
 		map[string]any{
 			"root":       root,
-			"file_count": len(written),
+			"file_count": len(planned),
 		},
 	)
 	if err != nil {
 		return "", nil, nil, err
 	}
+	written, err := materialize.WriteWorkspace(ws, writeRoot, s.AllowAbsoluteRoot)
+	if err != nil {
+		return "", nil, rec, err
+	}
 
 	return root, written, rec, nil
+}
+
+func plannedMaterializationPaths(ws *workspace.Workspace, root string) []string {
+	planned := make([]string, 0, len(ws.Files))
+	for path := range ws.Files {
+		planned = append(planned, filepath.Join(root, filepath.FromSlash(path)))
+	}
+	sort.Strings(planned)
+	return planned
 }
 
 func (s *Server) opUpdateState(
@@ -182,7 +208,7 @@ func (s *Server) opUpdateState(
 		oldContentBase64 = base64.StdEncoding.EncodeToString(oldFile.Data)
 	}
 
-	f, err := workspace.UpsertFile(ws, p, body)
+	f, err := candidateUpsert(ws, p, body)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -203,6 +229,9 @@ func (s *Server) opUpdateState(
 		},
 	)
 	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := workspace.UpsertFile(ws, p, body); err != nil {
 		return nil, nil, err
 	}
 
@@ -275,7 +304,7 @@ func (s *Server) opAppendEvent(
 		oldContentBase64 = base64.StdEncoding.EncodeToString(oldFile.Data)
 	}
 
-	f, err := workspace.AppendToFile(ws, p, line)
+	f, err := candidateAppend(ws, p, line)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -296,6 +325,9 @@ func (s *Server) opAppendEvent(
 		},
 	)
 	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := workspace.AppendToFile(ws, p, line); err != nil {
 		return nil, nil, err
 	}
 
@@ -369,7 +401,7 @@ func (s *Server) opCreateDocument(
 		oldContentBase64 = base64.StdEncoding.EncodeToString(oldFile.Data)
 	}
 
-	f, err := workspace.UpsertFile(ws, p, out)
+	f, err := candidateUpsert(ws, p, out)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -392,6 +424,9 @@ func (s *Server) opCreateDocument(
 	if err != nil {
 		return "", nil, nil, err
 	}
+	if _, err := workspace.UpsertFile(ws, p, out); err != nil {
+		return "", nil, nil, err
+	}
 
 	return docID, f, rec, nil
 }
@@ -404,32 +439,9 @@ func (s *Server) recordGlobalTransition(
 	files []string,
 	details map[string]any,
 ) (*receipts.Receipt, error) {
-	actor := r.Header.Get("X-Actor")
-	if actor == "" {
-		actor = "api"
-	}
-
 	receiptID := ids.New("receipt")
-	eventID := ids.New("event")
-
-	if details == nil {
-		details = map[string]any{}
-	}
-
-	details["authority_source"] = "explicit_authority_token"
-
-	ev := eventlog.Event{
-		ID:          eventID,
-		Type:        "transition",
-		WorkspaceID: workspaceID,
-		Actor:       actor,
-		Action:      action,
-		Status:      "accepted",
-		Details:     details,
-		ReceiptID:   receiptID,
-	}
-
-	savedEvent, err := s.Events.Append(ev)
+	details = withAuthoritySource(details)
+	accepted, err := s.proposeTransition(r, workspaceID, action, details)
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +453,7 @@ func (s *Server) recordGlobalTransition(
 		Objective:       objective,
 		Status:          "delivered",
 		AuthoritySource: "explicit_authority_token",
-		EventID:         savedEvent.ID,
+		EventID:         accepted.Durable.EventID,
 		FilesChanged:    files,
 		Details:         details,
 	}
@@ -452,6 +464,24 @@ func (s *Server) recordGlobalTransition(
 	}
 
 	return &savedReceipt, nil
+}
+
+func candidateWorkspace(ws *workspace.Workspace) *workspace.Workspace {
+	copy := *ws
+	copy.Files = make(map[string]*workspace.File, len(ws.Files))
+	for path, file := range ws.Files {
+		copy.Files[path] = file
+	}
+	copy.Directories = append([]string(nil), ws.Directories...)
+	return &copy
+}
+
+func candidateUpsert(ws *workspace.Workspace, path string, data []byte) (*workspace.File, error) {
+	return workspace.UpsertFile(candidateWorkspace(ws), path, data)
+}
+
+func candidateAppend(ws *workspace.Workspace, path string, line []byte) (*workspace.File, error) {
+	return workspace.AppendToFile(candidateWorkspace(ws), path, line)
 }
 
 func (s *Server) createCheckpoint(w http.ResponseWriter, r *http.Request) {
@@ -497,24 +527,13 @@ func (s *Server) createCheckpoint(w http.ResponseWriter, r *http.Request) {
 		checkpoint = cp
 	}
 
-	receipt, err := s.recordGlobalTransition(
-		r,
-		"",
-		"ledger.checkpoint.created",
-		"Create ledger checkpoint",
-		nil,
-		map[string]any{
-			"checkpoint": checkpoint,
-			"sidecar":    sidecarURL != "",
-		},
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("record checkpoint transition: %w", err))
-		return
-	}
-
+	// Checkpoints are derived cache artifacts. Do not append an accepted
+	// semantic transition or receipt after persisting one, because that would
+	// immediately make the checkpoint stale.
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"receipt":    receipt,
+		// Retain the response field for clients that decode the prior shape; a
+		// derived checkpoint intentionally has no semantic receipt.
+		"receipt":    nil,
 		"checkpoint": checkpoint,
 	})
 }

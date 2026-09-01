@@ -34,13 +34,6 @@ func WriteZip(
 	snapshotID string,
 	w io.Writer,
 ) error {
-	filteredEvents := []eventlog.Event{}
-	for _, ev := range events {
-		if ev.WorkspaceID == ws.ID {
-			filteredEvents = append(filteredEvents, ev)
-		}
-	}
-
 	filteredReceipts := []receipts.Receipt{}
 	for _, r := range allReceipts {
 		if r.WorkspaceID == ws.ID {
@@ -57,7 +50,7 @@ func WriteZip(
 		Source:       ws.Source,
 		Summary:      ws.Summary(),
 		Projection:   proj,
-		EventCount:   len(filteredEvents),
+		EventCount:   len(events),
 		ReceiptCount: len(filteredReceipts),
 	}
 
@@ -71,7 +64,9 @@ func WriteZip(
 		return err
 	}
 
-	if err := addFile(zw, "snapshot/events.jsonl", eventsJSONL(filteredEvents)); err != nil {
+	// Typed authority transitions bind a single global durable chain. Preserve
+	// that complete history for validation; replay remains workspace-filtered.
+	if err := addFile(zw, "snapshot/events.jsonl", eventsJSONL(events)); err != nil {
 		return err
 	}
 

@@ -16,21 +16,6 @@ func (s *Server) snapshotWorkspace(w http.ResponseWriter, r *http.Request) {
 
 	snapshotID := ids.New("snapshot")
 
-	_, err := s.recordGlobalTransition(
-		r,
-		ws.ID,
-		"workspace.snapshot.exported",
-		"Export workspace snapshot bundle",
-		nil,
-		map[string]any{
-			"snapshot_id": snapshotID,
-		},
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("record snapshot transition: %w", err))
-		return
-	}
-
 	events, err := s.Events.List()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("read events: %w", err))

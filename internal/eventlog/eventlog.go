@@ -28,6 +28,18 @@ type Event struct {
 	ReceiptID   string         `json:"receipt_id,omitempty"`
 	Hash        string         `json:"hash"`
 	PrevHash    string         `json:"prev_hash"`
+	// RustAck is evidence that the optional Rust sidecar durably accepted this
+	// already-Go-approved event. It is deliberately excluded from the Go event
+	// hash because it is received only after the Go event has been hashed.
+	RustAck *RustAcknowledgement `json:"rust_ack,omitempty"`
+}
+
+// RustAcknowledgement is the exact acknowledgement returned by the Rust
+// sidecar after it persists a Go event.
+type RustAcknowledgement struct {
+	ID       string `json:"id"`
+	Sequence int64  `json:"seq"`
+	Hash     string `json:"hash"`
 }
 
 type Service struct {
@@ -130,10 +142,12 @@ func (s *Service) Append(ev Event) (Event, error) {
 	ev.Hash = hash
 
 	if s.sidecarURL != "" {
-		if err := s.forward(ev); err != nil {
+		ack, err := s.forward(ev)
+		if err != nil {
 			s.seq--
 			return ev, fmt.Errorf("rust sidecar rejected event: %w", err)
 		}
+		ev.RustAck = &ack
 	}
 
 	line, err := json.Marshal(ev)
@@ -159,10 +173,10 @@ func (s *Service) Append(ev Event) (Event, error) {
 	return ev, nil
 }
 
-func (s *Service) forward(ev Event) error {
+func (s *Service) forward(ev Event) (RustAcknowledgement, error) {
 	body, err := json.Marshal(ev)
 	if err != nil {
-		return err
+		return RustAcknowledgement{}, err
 	}
 
 	resp, err := s.client.Post(
@@ -171,20 +185,42 @@ func (s *Service) forward(ev Event) error {
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return err
+		return RustAcknowledgement{}, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("sidecar returned status %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusCreated {
+		return RustAcknowledgement{}, fmt.Errorf("sidecar returned status %d", resp.StatusCode)
 	}
 
-	return nil
+	var ack struct {
+		Status string `json:"status"`
+		ID     string `json:"id"`
+		Seq    int64  `json:"seq"`
+		Hash   string `json:"hash"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ack); err != nil {
+		return RustAcknowledgement{}, fmt.Errorf("decode sidecar acknowledgement: %w", err)
+	}
+	if ack.Status != "recorded" {
+		return RustAcknowledgement{}, fmt.Errorf("sidecar acknowledgement has unexpected status %q", ack.Status)
+	}
+	if ack.ID == "" || ack.ID != ev.ID {
+		return RustAcknowledgement{}, fmt.Errorf("sidecar acknowledgement id %q does not match event id %q", ack.ID, ev.ID)
+	}
+	if ack.Seq <= 0 || ack.Seq != ev.Seq {
+		return RustAcknowledgement{}, fmt.Errorf("sidecar acknowledgement seq %d does not match event seq %d", ack.Seq, ev.Seq)
+	}
+	if !isSHA256(ack.Hash) {
+		return RustAcknowledgement{}, errors.New("sidecar acknowledgement has invalid hash")
+	}
+	return RustAcknowledgement{ID: ack.ID, Sequence: ack.Seq, Hash: ack.Hash}, nil
 }
 
 func hashEvent(ev Event) (string, error) {
 	clone := ev
 	clone.Hash = ""
+	clone.RustAck = nil
 
 	b, err := json.Marshal(clone)
 	if err != nil {
@@ -193,4 +229,12 @@ func hashEvent(ev Event) (string, error) {
 
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func isSHA256(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }

@@ -19,21 +19,6 @@ func (s *Server) verificationReport(w http.ResponseWriter, r *http.Request) {
 
 	reportID := ids.New("verification-report")
 
-	receipt, err := s.recordGlobalTransition(
-		r,
-		ws.ID,
-		"verification.report.generated",
-		"Generate exportable verification report",
-		nil,
-		map[string]any{
-			"report_id": reportID,
-		},
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("record report transition: %w", err))
-		return
-	}
-
 	replayResult, replayErr := s.opVerifyReplay(ws)
 
 	localLedger, ledgerErr := s.Events.Verify()
@@ -57,9 +42,8 @@ func (s *Server) verificationReport(w http.ResponseWriter, r *http.Request) {
 			"local":   localLedger,
 			"sidecar": sidecar,
 		},
-		"receipts":           receiptResult,
-		"issues":             ws.Issues,
-		"generation_receipt": receipt,
+		"receipts": receiptResult,
+		"issues":   ws.Issues,
 	}
 
 	if replayErr != nil {
