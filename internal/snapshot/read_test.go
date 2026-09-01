@@ -4,13 +4,59 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"flatten-workspace/internal/eventlog"
 	"flatten-workspace/internal/transition"
 	"flatten-workspace/internal/workspace"
 )
+
+func acknowledgedEventLog(t *testing.T) *eventlog.Service {
+	t.Helper()
+	var mu sync.Mutex
+	var events []eventlog.Event
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/events" {
+			mu.Lock()
+			defer mu.Unlock()
+			records := make([]map[string]any, 0, len(events))
+			previous := "genesis"
+			for _, ev := range events {
+				hash := strings.Repeat("a", 64)
+				records = append(records, map[string]any{"seq": ev.Seq, "prev_hash": previous, "hash": hash, "evidence": ev})
+				previous = hash
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"events": records})
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/events" {
+			http.NotFound(w, r)
+			return
+		}
+		defer r.Body.Close()
+		var ev eventlog.Event
+		if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+			t.Fatal(err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "recorded", "id": ev.ID, "seq": ev.Seq, "hash": strings.Repeat("a", 64),
+		})
+		mu.Lock()
+		events = append(events, ev)
+		mu.Unlock()
+	}))
+	t.Cleanup(sidecar.Close)
+	log, err := eventlog.New(t.TempDir(), sidecar.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return log
+}
 
 func TestReadAndVerifySnapshot(t *testing.T) {
 	state := []byte(`id: state-msl-0001
@@ -69,13 +115,10 @@ status: active
 	}
 }
 
-func TestVerifyLoadedAcceptsValidTypedAuthorityHistory(t *testing.T) {
+func TestVerifyLoadedRejectsValidLookingTypedAuthorityArchive(t *testing.T) {
 	state := []byte("id: state-msl-0001\ntype: project\nrevision: 1\nstatus: active\n")
 	path := "build-ledger/current/state.yaml"
-	log, err := eventlog.New(t.TempDir(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	log := acknowledgedEventLog(t)
 	authority := transition.New(log, nil)
 	resultData, err := json.Marshal(map[string]any{
 		"legacy_action": "build_ledger.state.updated",
@@ -112,22 +155,15 @@ func TestVerifyLoadedAcceptsValidTypedAuthorityHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verified, err := VerifyLoaded(loaded, ws.ID)
-	if err != nil {
-		t.Fatalf("VerifyLoaded rejected valid typed authority history: %v", err)
-	}
-	if verified["replay_ok"] != true {
-		t.Fatalf("expected replay_ok true, got: %+v", verified)
+	if _, err := VerifyLoaded(loaded, ws.ID); err == nil || !strings.Contains(err.Error(), "untrusted snapshot archive") {
+		t.Fatalf("typed snapshot archive verification error = %v, want untrusted archive rejection", err)
 	}
 }
 
-func TestVerifyLoadedReplaysTargetWorkspaceFromGlobalTypedHistory(t *testing.T) {
+func TestVerifyLoadedRejectsGlobalTypedAuthorityArchive(t *testing.T) {
 	state := []byte("id: state-msl-0001\ntype: project\nrevision: 1\nstatus: active\n")
 	path := "build-ledger/current/state.yaml"
-	log, err := eventlog.New(t.TempDir(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	log := acknowledgedEventLog(t)
 	authority := transition.New(log, nil)
 	otherData, err := json.Marshal(map[string]any{"legacy_action": "workspace.imported_zip", "legacy_details": map[string]any{}})
 	if err != nil {
@@ -183,20 +219,13 @@ func TestVerifyLoadedReplaysTargetWorkspaceFromGlobalTypedHistory(t *testing.T) 
 	if len(loaded.Events) != len(events) {
 		t.Fatalf("snapshot events = %d, want complete global history of %d", len(loaded.Events), len(events))
 	}
-	verified, err := VerifyLoaded(loaded, ws.ID)
-	if err != nil {
-		t.Fatalf("VerifyLoaded rejected valid global history: %v", err)
-	}
-	if verified["replay_ok"] != true {
-		t.Fatalf("expected target workspace replay_ok true, got: %+v", verified)
+	if _, err := VerifyLoaded(loaded, ws.ID); err == nil || !strings.Contains(err.Error(), "untrusted snapshot archive") {
+		t.Fatalf("global typed snapshot archive verification error = %v, want untrusted archive rejection", err)
 	}
 }
 
 func TestVerifyLoadedRejectsMalformedTypedAuthorityHistory(t *testing.T) {
-	log, err := eventlog.New(t.TempDir(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	log := acknowledgedEventLog(t)
 	if _, err := log.Append(eventlog.Event{
 		ID:          "corrupt-typed-envelope",
 		Type:        "transition.authority.accepted",
@@ -216,7 +245,7 @@ func TestVerifyLoadedRejectsMalformedTypedAuthorityHistory(t *testing.T) {
 	if err == nil {
 		t.Fatal("VerifyLoaded accepted malformed typed authority history")
 	}
-	if !strings.Contains(err.Error(), "accepted event \"corrupt-typed-envelope\" payload") {
-		t.Fatalf("VerifyLoaded error = %v, want typed envelope rejection", err)
+	if !strings.Contains(err.Error(), "untrusted snapshot archive") {
+		t.Fatalf("VerifyLoaded error = %v, want typed archive rejection", err)
 	}
 }

@@ -55,6 +55,17 @@ func (s *Service) Verify() (map[string]any, error) {
 				"last_hash":      prev,
 			}, nil
 		}
+		if requiresRustAcknowledgement(ev) {
+			if err := ValidateRustAcknowledgement(ev); err != nil {
+				return map[string]any{
+					"ok":             false,
+					"events_checked": checked,
+					"failed_seq":     ev.Seq,
+					"reason":         fmt.Sprintf("rust acknowledgement: %v", err),
+					"last_hash":      prev,
+				}, nil
+			}
+		}
 
 		prev = ev.Hash
 		expectedSeq++

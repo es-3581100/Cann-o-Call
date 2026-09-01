@@ -11,7 +11,9 @@ import (
 )
 
 func (s *Server) opVerifyReplay(ws *workspace.Workspace) (map[string]any, error) {
-	events, err := s.Events.CheckedEvents()
+	// Replay of authority decisions is sourced from the Rust recorder, not the
+	// local Go mirror. With no configured recorder this is intentionally empty.
+	events, err := s.Events.RustAcknowledgedEvents()
 	if err != nil {
 		return nil, err
 	}

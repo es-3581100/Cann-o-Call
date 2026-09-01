@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"flatten-workspace/internal/eventlog"
@@ -25,8 +26,60 @@ func (f *fakeWriter) Append(ev eventlog.Event) (eventlog.Event, error) {
 	}
 	ev.Seq = int64(len(f.events) + 1)
 	ev.Hash = "fake-hash"
+	ev.RustAck = &eventlog.RustAcknowledgement{ID: ev.ID, Sequence: ev.Seq, Hash: strings.Repeat("a", 64)}
 	f.events = append(f.events, ev)
 	return ev, nil
+}
+
+func acknowledgingSidecar(t *testing.T) *httptest.Server {
+	t.Helper()
+	var mu sync.Mutex
+	var events []eventlog.Event
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/events" {
+			mu.Lock()
+			defer mu.Unlock()
+			records := make([]map[string]any, 0, len(events))
+			previous := "genesis"
+			for _, ev := range events {
+				hash := strings.Repeat("a", 64)
+				records = append(records, map[string]any{"seq": ev.Seq, "prev_hash": previous, "hash": hash, "evidence": ev})
+				previous = hash
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"events": records})
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/events" {
+			http.NotFound(w, r)
+			return
+		}
+		defer r.Body.Close()
+		var ev eventlog.Event
+		if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+			t.Fatalf("decode forwarded event: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "recorded",
+			"id":     ev.ID,
+			"seq":    ev.Seq,
+			"hash":   strings.Repeat("a", 64),
+		})
+		mu.Lock()
+		events = append(events, ev)
+		mu.Unlock()
+	}))
+	t.Cleanup(sidecar.Close)
+	return sidecar
+}
+
+func acknowledgedLog(t *testing.T) *eventlog.Service {
+	t.Helper()
+	log, err := eventlog.New(t.TempDir(), acknowledgingSidecar(t).URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return log
 }
 
 func proposal(a *Authority, id string) ProposedTransition {
@@ -187,9 +240,41 @@ func TestTypedValidationPolicyRestoreAndImportLeaveRejectedStateUnchanged(t *tes
 	}
 }
 
+func TestSemanticAdmissionFailsClosedWithoutRustRecorderIncludingRestoreAndImport(t *testing.T) {
+	log, err := eventlog.New(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(log, nil)
+	initial := a.Projection()
+	for _, admit := range []struct {
+		name string
+		call func(ProposedTransition) (AcceptedTransition, error)
+	}{
+		{"propose", a.Propose},
+		{"restore", a.Restore},
+		{"import", a.Import},
+	} {
+		t.Run(admit.name, func(t *testing.T) {
+			_, err := admit.call(proposal(a, admit.name))
+			if err == nil || !strings.Contains(err.Error(), "durable_recorder_unavailable") {
+				t.Fatalf("%s error = %v, want durable_recorder_unavailable", admit.name, err)
+			}
+			assertClass(t, Durable, err)
+			if !reflect.DeepEqual(a.Projection(), initial) {
+				t.Fatalf("%s changed projection without Rust acknowledgement", admit.name)
+			}
+			events, listErr := log.List()
+			if listErr != nil || len(events) != 0 {
+				t.Fatalf("%s created local accepted event: events=%d err=%v", admit.name, len(events), listErr)
+			}
+		})
+	}
+}
+
 func TestEventLogBoundaryRestartReplayAndCorruptHistoryBlock(t *testing.T) {
 	dir := t.TempDir()
-	log, err := eventlog.New(dir, "")
+	log, err := eventlog.New(dir, acknowledgingSidecar(t).URL)
 	if err != nil {
 		t.Fatalf("new event log: %v", err)
 	}
@@ -237,18 +322,19 @@ func TestEventLogBoundaryRestartReplayAndCorruptHistoryBlock(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewFromEventLog(log, nil); err == nil {
-		t.Fatal("corrupt history rebuilt")
-	} else {
-		assertClass(t, ReplayCorruption, err)
+	if _, err := log.CheckedEvents(); err == nil {
+		t.Fatal("corrupt mirror passed local integrity checks")
+	}
+	// The Go JSONL is only a cache. Restart derives from the Rust recorder and
+	// must not let a corrupt local mirror replace its acknowledged history.
+	restarted, err = NewFromEventLog(log, nil)
+	if err != nil || !sameProjection(restarted.Projection(), full) {
+		t.Fatalf("Rust-backed restart after corrupt mirror = %#v, %v", restarted, err)
 	}
 }
 
 func TestCheckpointMatchesFullHistoryAndSuffixRebuild(t *testing.T) {
-	log, err := eventlog.New(t.TempDir(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	log := acknowledgedLog(t)
 	a := New(log, nil)
 	if _, err := a.Propose(proposal(a, "first")); err != nil {
 		t.Fatal(err)
@@ -322,6 +408,32 @@ func TestDurableBindingPreservesRustAcknowledgement(t *testing.T) {
 	}
 	if got := acceptedSlice(rebuilt); len(got) != 1 || !reflect.DeepEqual(got[0].Durable.RustAck, accepted.Durable.RustAck) {
 		t.Fatalf("rebuild lost Rust acknowledgement: %#v", got)
+	}
+	checkpointWithoutAck := cp
+	checkpointWithoutAck.Accepted = append([]AcceptedTransition(nil), cp.Accepted...)
+	checkpointWithoutAck.Accepted[0].Durable.RustAck = nil
+	if _, err := RebuildFromCheckpoint(checkpointWithoutAck, history, log, nil); err == nil {
+		t.Fatal("checkpoint without Rust acknowledgement rebuilt")
+	} else {
+		assertClass(t, ReplayCorruption, err)
+	}
+}
+
+func TestRebuildRejectsUnboundAcceptedMirrorRecord(t *testing.T) {
+	log := acknowledgedLog(t)
+	a := New(log, nil)
+	if _, err := a.Propose(proposal(a, "bound")); err != nil {
+		t.Fatal(err)
+	}
+	events, err := log.CheckedEvents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	events[0].RustAck = nil
+	if _, err := Rebuild(events, log, nil); err == nil {
+		t.Fatal("unbound accepted mirror record rebuilt")
+	} else {
+		assertClass(t, ReplayCorruption, err)
 	}
 }
 

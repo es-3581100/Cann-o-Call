@@ -57,6 +57,7 @@ enum RecoveryClass {
     MalformedRecord,
     MalformedCheckpoint,
     StaleCheckpoint,
+    DuplicateEvidenceID,
     TruncatedTail,
     Io,
 }
@@ -206,6 +207,25 @@ fn append_evidence(state: &mut AppState, evidence: Value) -> Result<AppendedEven
             "on-disk ledger does not match accepted in-memory state",
         ));
     }
+    let records = read_records(&state.ledger)?;
+    if let Some(id) = evidence_id(&evidence) {
+        for existing in &records {
+            if evidence_id(&existing.evidence) != Some(id) {
+                continue;
+            }
+            if same_semantic_evidence(&existing.evidence, &evidence) {
+                return Ok(AppendedEvent {
+                    id: existing.evidence.get("id").cloned().unwrap_or(Value::Null),
+                    seq: existing.seq,
+                    hash: existing.hash.clone(),
+                });
+            }
+            return Err(LedgerError::new(
+                RecoveryClass::DuplicateEvidenceID,
+                format!("evidence id {id:?} already binds different semantic evidence"),
+            ));
+        }
+    }
 
     let candidate_seq = state.accepted.seq + 1;
     let candidate_prev_hash = state.accepted.head_hash.clone();
@@ -238,6 +258,30 @@ fn append_evidence(state: &mut AppState, evidence: Value) -> Result<AppendedEven
         seq: candidate_seq,
         hash,
     })
+}
+
+fn evidence_id(evidence: &Value) -> Option<&str> {
+    evidence
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+}
+
+// Go may regenerate its transport envelope after it cannot observe a response
+// from a committed Rust append. These fields are not the Go-approved semantic
+// payload, so they must not turn that retry into a duplicate record. Every
+// other field, notably details.accepted_transition, remains binding.
+fn same_semantic_evidence(left: &Value, right: &Value) -> bool {
+    fn normalized(evidence: &Value) -> Value {
+        let mut normalized = evidence.clone();
+        if let Some(object) = normalized.as_object_mut() {
+            for field in ["seq", "created_at", "hash", "prev_hash", "rust_ack"] {
+                object.remove(field);
+            }
+        }
+        normalized
+    }
+    normalized(left) == normalized(right)
 }
 
 async fn verify_events(State(state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
@@ -640,6 +684,45 @@ mod tests {
         let restarted = data.state();
         assert_eq!(restarted.accepted, state.accepted);
         assert_eq!(restarted.accepted.accepted_count, 3);
+    }
+
+    #[test]
+    fn duplicate_evidence_id_returns_original_ack_and_rejects_semantic_conflict() {
+        let data = TestDataDir::new();
+        let mut state = data.state();
+        let first = append_evidence(
+            &mut state,
+            json!({
+                "id": "transition-1", "seq": 1, "created_at": "2026-08-31T00:00:00Z",
+                "type": "transition.authority.accepted", "hash": "first-go-envelope",
+                "details": {"accepted_transition": {"proposal": {"transition_id": "transition-1"}}}
+            }),
+        )
+        .unwrap();
+        let retry = append_evidence(
+            &mut state,
+            json!({
+                "id": "transition-1", "seq": 1, "created_at": "2026-08-31T00:01:00Z",
+                "type": "transition.authority.accepted", "hash": "retried-go-envelope",
+                "details": {"accepted_transition": {"proposal": {"transition_id": "transition-1"}}}
+            }),
+        )
+        .unwrap();
+        assert_eq!(retry.seq, first.seq);
+        assert_eq!(retry.hash, first.hash);
+        assert_eq!(state.accepted.accepted_count, 1);
+        assert_eq!(read_records(&data.ledger()).unwrap().len(), 1);
+
+        let conflict = append_evidence(
+            &mut state,
+            json!({
+                "id": "transition-1", "type": "transition.authority.accepted",
+                "details": {"accepted_transition": {"proposal": {"transition_id": "different"}}}
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(conflict.class, RecoveryClass::DuplicateEvidenceID);
+        assert_eq!(state.accepted.accepted_count, 1);
     }
 
     #[test]

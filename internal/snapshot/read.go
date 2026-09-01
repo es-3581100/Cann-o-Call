@@ -13,7 +13,6 @@ import (
 	"flatten-workspace/internal/projection"
 	"flatten-workspace/internal/receipts"
 	"flatten-workspace/internal/replay"
-	"flatten-workspace/internal/transition"
 	"flatten-workspace/internal/workspace"
 )
 
@@ -163,10 +162,9 @@ func VerifyLoaded(loaded *Loaded, workspaceID string) (map[string]any, error) {
 		if event.Type != "transition.authority.accepted" {
 			continue
 		}
-		if _, err := transition.Rebuild(loaded.Events, nil, nil); err != nil {
-			return nil, fmt.Errorf("validate typed authority history: %w", err)
-		}
-		break
+		// Snapshot archives are portable input, not a live Rust acknowledgement
+		// source. A syntactically valid copied ACK cannot establish authority.
+		return nil, fmt.Errorf("untrusted snapshot archive contains typed accepted event %q; live Rust authority is required", event.ID)
 	}
 
 	replayed, replayErr := replay.BuildLedgerProjectionFromEvents(loaded.Events, workspaceID)

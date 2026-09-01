@@ -3,11 +3,14 @@ package server
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	"flatten-workspace/internal/eventlog"
@@ -30,14 +33,80 @@ func (w *failOnSecondTransitionWriter) Append(ev eventlog.Event) (eventlog.Event
 	}
 	ev.Seq = int64(w.calls)
 	ev.Hash = "test-hash"
+	ev.RustAck = &eventlog.RustAcknowledgement{ID: ev.ID, Sequence: ev.Seq, Hash: strings.Repeat("a", 64)}
 	return ev, nil
+}
+
+func acknowledgingRustSidecar(t *testing.T) *httptest.Server {
+	t.Helper()
+	var mu sync.Mutex
+	var events []eventlog.Event
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/events" {
+			mu.Lock()
+			defer mu.Unlock()
+			records := make([]map[string]any, 0, len(events))
+			previous := "genesis"
+			for _, ev := range events {
+				hash := strings.Repeat("a", 64)
+				records = append(records, map[string]any{"seq": ev.Seq, "prev_hash": previous, "hash": hash, "evidence": ev})
+				previous = hash
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"events": records})
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/checkpoints" {
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "checkpoint_created"})
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/events" {
+			http.NotFound(w, r)
+			return
+		}
+		defer r.Body.Close()
+		var ev eventlog.Event
+		if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+			t.Fatalf("decode Rust event: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "recorded", "id": ev.ID, "seq": ev.Seq, "hash": strings.Repeat("a", 64),
+		})
+		mu.Lock()
+		events = append(events, ev)
+		mu.Unlock()
+	}))
+	t.Cleanup(sidecar.Close)
+	return sidecar
 }
 
 func newTransitionTestServer(t *testing.T) *Server {
 	t.Helper()
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("AUTHORITY_TOKEN", "test-token")
+	t.Setenv("RUST_LEDGER_URL", acknowledgingRustSidecar(t).URL)
 	return New()
+}
+
+func TestFreshServerWithoutRustStartsButRejectsSemanticAdmission(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("AUTHORITY_TOKEN", "test-token")
+	t.Setenv("RUST_LEDGER_URL", "")
+	s := New()
+	ws := &workspace.Workspace{ID: "workspace-without-rust", Files: map[string]*workspace.File{}}
+	s.store.Add(ws)
+	_, _, err := s.opUpdateState(
+		httptest.NewRequest(http.MethodPost, "/api/workspaces/workspace-without-rust/build-ledger/current/state", nil),
+		ws,
+		[]byte("id: state-1\ntype: project\nrevision: 1\nstatus: active\n"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "durable_recorder_unavailable") {
+		t.Fatalf("unconfigured server admission error = %v, want durable_recorder_unavailable", err)
+	}
+	if _, exists := ws.Files["build-ledger/current/state.yaml"]; exists {
+		t.Fatal("unconfigured server admitted a semantic state update")
+	}
 }
 
 func zipBytes(t *testing.T, name, contents string) []byte {

@@ -28,9 +28,9 @@ type Event struct {
 	ReceiptID   string         `json:"receipt_id,omitempty"`
 	Hash        string         `json:"hash"`
 	PrevHash    string         `json:"prev_hash"`
-	// RustAck is evidence that the optional Rust sidecar durably accepted this
-	// already-Go-approved event. It is deliberately excluded from the Go event
-	// hash because it is received only after the Go event has been hashed.
+	// RustAck is evidence that the Rust recorder durably accepted this
+	// already-Go-approved event. Semantic accepted transitions require it; it
+	// is excluded from the Go event hash because it arrives after hashing.
 	RustAck *RustAcknowledgement `json:"rust_ack,omitempty"`
 }
 
@@ -41,6 +41,13 @@ type RustAcknowledgement struct {
 	Sequence int64  `json:"seq"`
 	Hash     string `json:"hash"`
 }
+
+const acceptedTransitionEventType = "transition.authority.accepted"
+
+// ErrDurableRecorderUnavailable means an accepted semantic transition was not
+// durably acknowledged by the Rust recorder. The Go JSONL is only a mirror and
+// must never stand in for that acknowledgement.
+var ErrDurableRecorderUnavailable = errors.New("durable_recorder_unavailable")
 
 type Service struct {
 	mu         sync.Mutex
@@ -97,6 +104,9 @@ func (s *Service) load() error {
 			// In a stricter system, corrupted lines should quarantine.
 			continue
 		}
+		if s.sidecarURL == "" && requiresRustAcknowledgement(ev) {
+			return fmt.Errorf("%w: semantic accepted history exists in Go mirror while Rust ledger URL is not configured", ErrDurableRecorderUnavailable)
+		}
 
 		if ev.Seq > s.seq {
 			s.seq = ev.Seq
@@ -129,6 +139,9 @@ func (s *Service) Append(ev Event) (Event, error) {
 	if ev.Status == "" {
 		ev.Status = "accepted"
 	}
+	if requiresRustAcknowledgement(ev) && s.sidecarURL == "" {
+		return ev, fmt.Errorf("%w: rust ledger URL is not configured", ErrDurableRecorderUnavailable)
+	}
 
 	s.seq++
 	ev.Seq = s.seq
@@ -145,9 +158,15 @@ func (s *Service) Append(ev Event) (Event, error) {
 		ack, err := s.forward(ev)
 		if err != nil {
 			s.seq--
-			return ev, fmt.Errorf("rust sidecar rejected event: %w", err)
+			return ev, fmt.Errorf("%w: rust sidecar rejected event: %v", ErrDurableRecorderUnavailable, err)
 		}
 		ev.RustAck = &ack
+	}
+	if requiresRustAcknowledgement(ev) {
+		if err := ValidateRustAcknowledgement(ev); err != nil {
+			s.seq--
+			return ev, fmt.Errorf("%w: %v", ErrDurableRecorderUnavailable, err)
+		}
 	}
 
 	line, err := json.Marshal(ev)
@@ -171,6 +190,29 @@ func (s *Service) Append(ev Event) (Event, error) {
 	s.lastHash = ev.Hash
 
 	return ev, nil
+}
+
+func requiresRustAcknowledgement(ev Event) bool {
+	return ev.Type == acceptedTransitionEventType
+}
+
+// ValidateRustAcknowledgement proves that a mirrored event is bound to the
+// Rust recorder acknowledgement retained with it. The Rust hash is opaque to
+// Go, but must be a SHA-256 value and bind the same event identity/sequence.
+func ValidateRustAcknowledgement(ev Event) error {
+	if ev.RustAck == nil {
+		return errors.New("missing rust acknowledgement")
+	}
+	if ev.ID == "" || ev.RustAck.ID != ev.ID {
+		return fmt.Errorf("rust acknowledgement id %q does not match event id %q", ev.RustAck.ID, ev.ID)
+	}
+	if ev.Seq <= 0 || ev.RustAck.Sequence != ev.Seq {
+		return fmt.Errorf("rust acknowledgement seq %d does not match event seq %d", ev.RustAck.Sequence, ev.Seq)
+	}
+	if !isSHA256(ev.RustAck.Hash) {
+		return errors.New("rust acknowledgement has invalid hash")
+	}
+	return nil
 }
 
 func (s *Service) forward(ev Event) (RustAcknowledgement, error) {

@@ -193,6 +193,9 @@ func (a *Authority) Propose(p ProposedTransition) (AcceptedTransition, error) {
 	if saved.ID != normalized.TransitionID {
 		return AcceptedTransition{}, reject(Durable, "append acknowledgement bound unexpected event id %q", saved.ID)
 	}
+	if err := eventlog.ValidateRustAcknowledgement(saved); err != nil {
+		return AcceptedTransition{}, reject(Durable, "durable_recorder_unavailable: invalid Rust acknowledgement: %v", err)
+	}
 	accepted.Durable = durableBinding(saved)
 	a.state = next
 	a.accepted[normalized.TransitionID] = acceptedRecord{request: request, accepted: accepted}

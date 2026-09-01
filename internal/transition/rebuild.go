@@ -12,9 +12,9 @@ import (
 // NewFromEventLog is the safe restart path: it rejects malformed and
 // hash-chain-corrupt durable history before deriving any semantic projection.
 func NewFromEventLog(log *eventlog.Service, policy PolicyFunc) (*Authority, error) {
-	events, err := log.CheckedEvents()
+	events, err := log.RustAcknowledgedEvents()
 	if err != nil {
-		return nil, reject(ReplayCorruption, "checked durable history: %v", err)
+		return nil, reject(ReplayCorruption, "read Rust-acknowledged durable history: %v", err)
 	}
 	return Rebuild(events, log, policy)
 }
@@ -189,6 +189,13 @@ func authorityFromCheckpoint(cp Checkpoint, writer DurableWriter, policy PolicyF
 		}
 		if accepted.Durable.EventID != proposal.TransitionID {
 			return nil, reject(ReplayCorruption, "checkpoint binding does not match transition id")
+		}
+		if err := eventlog.ValidateRustAcknowledgement(eventlog.Event{
+			ID:      accepted.Durable.EventID,
+			Seq:     accepted.Durable.Sequence,
+			RustAck: accepted.Durable.RustAck,
+		}); err != nil {
+			return nil, reject(ReplayCorruption, "checkpoint binding lacks valid Rust acknowledgement: %v", err)
 		}
 		accepted.Proposal = proposal
 		a.accepted[proposal.TransitionID] = acceptedRecord{request: request, accepted: accepted}

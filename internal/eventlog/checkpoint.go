@@ -20,7 +20,7 @@ func (s *Service) Checkpoint(dir string) (map[string]any, error) {
 		"created_at": time.Now().UTC().Format(time.RFC3339),
 		"seq":        s.seq,
 		"last_hash":  s.lastHash,
-		"source":     "go-eventlog",
+		"source":     "rust_acknowledged_mirror",
 	}
 
 	name := fmt.Sprintf(
