@@ -120,6 +120,13 @@ func parseStudioCommand(line string) (studioCommand, error) {
 }
 
 func handleStudio(jsonMode bool, args []string) int {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			printStudioHelp(os.Stdout)
+			return 0
+		}
+	}
+
 	once := false
 	for _, arg := range args {
 		if arg == "--once" {
@@ -130,7 +137,7 @@ func handleStudio(jsonMode bool, args []string) int {
 	}
 	vm, err := fetchStudio()
 	if err != nil {
-		return outputError(progress.ErrDurableRecorderUnavailable, "Studio server unavailable; GET /api/studio failed", err, jsonMode)
+		return outputError(progress.ErrDurableRecorderUnavailable, "Studio server unavailable; start the documented Go server (go run .), then retry Studio", err, jsonMode)
 	}
 	if once {
 		fmt.Fprintln(os.Stdout, studio.RenderOnce(vm))
@@ -181,6 +188,15 @@ func handleStudio(jsonMode bool, args []string) int {
 			printStudioTab(vm, tab, selected, ansi)
 		}
 	}
+}
+
+func printStudioHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: flatten-workspace studio [--once] [--json]")
+	fmt.Fprintln(w, "Studio is terminal-first.")
+	fmt.Fprintln(w, "Requires the Go server; it performs only read-only GET /api/studio.")
+	fmt.Fprintln(w, "  --once  print one Monitor and Ranger snapshot, then exit")
+	fmt.Fprintln(w, "Interactive allowlisted commands: monitor, ranger, refresh, select <index>, help, quit.")
+	fmt.Fprintln(w, "Unattached collectors remain unavailable; Studio does not fabricate live data.")
 }
 
 func fetchStudio() (studio.ViewModel, error) {

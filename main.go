@@ -30,7 +30,7 @@ func isCLIArgs(args []string) bool {
 	}
 	// Support both binary names: flatten-workspace and cann-o-call; accept subcommands regardless
 	cmd := args[0]
-	if cliCommands[cmd] {
+	if cliCommands[cmd] || cmd == "--help" || cmd == "-h" {
 		return true
 	}
 	// Also handle --json before command: e.g., --json status

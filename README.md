@@ -46,7 +46,7 @@ append and acknowledgement → Go projection advance → controlled effect where
 applicable → receipt. If Rust is absent or rejects the append, semantic
 admission fails closed; the local Go JSONL is only a Rust-acknowledged mirror.
 
-## Implemented in RC.2
+## Current checkout functionality (not the `v0.1.0-rc.2` tag)
 
 - Go HTTP server, operator CLI, and a Rust/Axum ledger sidecar.
 - Bounded source ingestion with safe path handling, ZIP/envelope compatibility,
