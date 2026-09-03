@@ -13,10 +13,9 @@ deterministic context-graph queries, and explicit state-transition evidence. It
 keeps admission, durable evidence, local actor lifecycle, and operator views in
 separate roles rather than treating a query result or an actor as authority.
 
-**RC.2 status:** `0.1.0-rc.2` is a public-license-ready release candidate,
-pending separate publication authorization. RC.2 reconciles licensing and
-release packaging; it does not claim a new runtime scope beyond the RC
-architecture in this repository.
+**RC.4 status:** `0.1.0-rc.4` is the intended next immutable release
+candidate. Until `v0.1.0-rc.4` is created, `v0.1.0-rc.3` is the latest
+published tag. An immutable tag, not `main`, identifies a reproducible release.
 
 ## Architecture and authority
 
@@ -46,7 +45,7 @@ append and acknowledgement → Go projection advance → controlled effect where
 applicable → receipt. If Rust is absent or rejects the append, semantic
 admission fails closed; the local Go JSONL is only a Rust-acknowledged mirror.
 
-## Current checkout functionality (not the `v0.1.0-rc.2` tag)
+## RC.4 release-candidate functionality
 
 - Go HTTP server, operator CLI, and a Rust/Axum ledger sidecar.
 - Bounded source ingestion with safe path handling, ZIP/envelope compatibility,
@@ -81,22 +80,46 @@ admission fails closed; the local Go JSONL is only a Rust-acknowledged mirror.
   library loading, arbitrary symbol execution, dynamic plugin loader, or
   arbitrary shell execution. The native membrane only dispatches its explicit
   allowlist.
+- Capability and scoring panels may show **unavailable** when their collector
+  is unattached. This is an intentional bounded runtime state, not fabricated
+  capability or scoring data; attached collector projections remain observable.
 
 ## Quick start
 
-Prerequisites: the Go toolchain specified by `go.mod` (currently Go `1.25.3`)
-and a Rust/Cargo toolchain for `sidecar/Cargo.toml`.
+### Supported environment and tooling
+
+RC.4 is tested on Linux/amd64 with a POSIX-compatible shell. Build and runtime
+instructions require the Go toolchain specified by `go.mod` (currently Go
+`1.25.3`), Rust/Cargo for `sidecar/Cargo.toml`, `make`, and the standard Unix
+utilities used by the Makefile (`cp` and `ln`). Other operating systems and
+toolchains are not claimed as supported by this release candidate.
+
+### Release checkout
+
+Cloning `main` obtains ongoing development, not an immutable release. Check
+out a published tag for reproducible evaluation:
 
 ```bash
 git clone https://github.com/es-3581100/Cann-o-Call.git
 cd Cann-o-Call
+
+# Current published release candidate at the time RC.4 is prepared.
+git checkout v0.1.0-rc.3
+
+# After RC.4 is published, use its immutable tag instead.
+# git checkout v0.1.0-rc.4
+```
+
+Build the checked-out source distribution:
+
+```bash
 
 # Build the Go runtime/CLI and the Rust durable sidecar.
 make build
 cargo build --locked --manifest-path sidecar/Cargo.toml
 
 # Verify the source-defined CLI and focused tests.
-./bin/cann-o-call help
+./bin/cann-o-call --help
 go test ./...
 cargo test --locked --manifest-path sidecar/Cargo.toml
 ```
@@ -133,8 +156,8 @@ go run . ledger verify --json
 
 mkdir -p /tmp/cann-o-call-demo
 printf 'hello from Cann-o-Call actor runtime\n' > /tmp/cann-o-call-demo/hello.txt
-go run . ingest /tmp/cann-o-call-demo/hello.txt --workspace rc2-demo --json
-go run . query hello --workspace rc2-demo --json
+go run . ingest /tmp/cann-o-call-demo/hello.txt --workspace rc4-demo --json
+go run . query hello --workspace rc4-demo --json
 curl -fsS http://127.0.0.1:8080/api/ledger/verify
 ```
 
@@ -170,8 +193,8 @@ read-only `GET /api/studio` ViewModel; it does not create authority, invoke a
 shell, or fabricate offline telemetry.
 
 ```text
-flatten-workspace studio --once
-flatten-workspace studio
+./bin/flatten-workspace studio --once
+./bin/flatten-workspace studio
 ```
 
 Interactive commands are `monitor`, `ranger`, `refresh`, `select <index>`,
@@ -179,6 +202,9 @@ Interactive commands are `monitor`, `ranger`, `refresh`, `select <index>`,
 prints a plain-text full Monitor and three-column Ranger snapshot for scripts.
 The server-rendered `/ui` page is a secondary HTMX projection of that same
 ViewModel; safe existing workspace/tree/file drilldown routes remain available.
+With the documented loopback server running, open
+`http://127.0.0.1:8080/ui` in a browser. The corresponding read-only API is
+`http://127.0.0.1:8080/api/studio`.
 
 ## HTTP and CLI surface
 
@@ -235,10 +261,10 @@ scripts/release/           RC reproducibility, packaging, and artifact checks
 
 ## Release, license, and contributions
 
-Cann-o-Call `0.1.0-rc.2` is source-available under the **Business Source
+Cann-o-Call `0.1.0-rc.4` is source-available under the **Business Source
 License 1.1**, not an OSI open-source license before its Change Date. The
-binding terms are in [LICENSE](LICENSE). For this version, the Change Date is
-**2030-09-01** and the Change License is **Apache License 2.0**.
+binding terms are in [LICENSE](LICENSE). For this source distribution, the
+Change Date is **2030-09-01** and the Change License is **Apache License 2.0**.
 
 The Additional Use Grant permits qualifying internal production use for
 organizations with fewer than 50 aggregate FTE and less than US $5,000,000
@@ -255,7 +281,8 @@ requests, discussions, and documentation suggestions are welcome; see
 ## Documentation
 
 - [Reconciled RC architecture](docs/release/ARCHITECTURE_RECONCILED.md)
-- [RC.2 release notes](docs/release/RELEASE_NOTES_v0.1.0-rc.2.md)
+- [RC.4 release notes](docs/release/RELEASE_NOTES_v0.1.0-rc.4.md)
+- [Historical RC.2 release notes](docs/release/RELEASE_NOTES_v0.1.0-rc.2.md)
 - [Release documentation reconciliation](docs/release/DOCS_RECONCILIATION.md)
 - [Actor compatibility map](docs/CHUNK-04-actor-compatibility-map.md)
 - [Ingest compatibility map](docs/CHUNK-05-ingest-compatibility-map.md)

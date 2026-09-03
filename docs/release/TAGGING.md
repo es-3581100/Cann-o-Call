@@ -1,11 +1,11 @@
 # RC Tagging
 
-## Current release candidate
+## Intended release candidate
 
 The current release candidate is:
 
 ```text
-v0.1.0-rc.2
+v0.1.0-rc.4
 ```
 
 The provided `scripts/release/tag-rc.sh` creates an annotated local tag only. It never pushes.
@@ -13,20 +13,23 @@ The provided `scripts/release/tag-rc.sh` creates an annotated local tag only. It
 Expected normal sequence:
 
 ```bash
-EXPECTED_HEAD="$(git rev-parse HEAD)" TAG=v0.1.0-rc.2 scripts/release/verify-release-head.sh
-EXPECTED_HEAD="$(git rev-parse HEAD)" TAG=v0.1.0-rc.2 scripts/release/tag-rc.sh
+EXPECTED_HEAD="$(git rev-parse HEAD)" TAG=v0.1.0-rc.4 scripts/release/verify-release-head.sh
+EXPECTED_HEAD="$(git rev-parse HEAD)" TAG=v0.1.0-rc.4 scripts/release/tag-rc.sh
 
-git show --no-patch --decorate v0.1.0-rc.2
+git show --no-patch --decorate v0.1.0-rc.4
 ```
 
-The `EXPECTED_HEAD` override must be the exact clean legal/release commit being
-tagged. The default in `common.sh` remains the immutable RC.1 packaging base
-(`b1a8221888d7835043482a2c3310927e9b8c6f8c`) for preflight reference.
+The `EXPECTED_HEAD` value is required and must be the exact clean commit being
+tagged. `VERSION` supplies the default version and `TAG` defaults to
+`v$VERSION`; neither replaces the explicit reviewed commit gate.
 
 For cryptographically signed tags, set `SIGN_TAG=1` only when the local signing configuration is already established and trusted.
 
-## Historical RC.1 checkpoint
+## Historical checkpoints
 
 `v0.1.0-rc.1` is a permanent historical technical/reproducibility checkpoint
 and remains attached to `b1a8221888d7835043482a2c3310927e9b8c6f8c`. Do not
 move, retag, or delete it.
+
+`v0.1.0-rc.2` and `v0.1.0-rc.3` are also immutable historical release
+candidate tags. Do not move, retag, or delete them.

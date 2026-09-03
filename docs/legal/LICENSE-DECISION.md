@@ -3,14 +3,15 @@
 **Decision status:** `FINALIZED`
 **Selected model:** Business Source License 1.1 (BSL 1.1) + Cann-o-Call Small-Business Production Use Grant.
 
-The production license is adopted in `LICENSE` for Cann-o-Call 0.1.0-rc.2.
+This document records the RC.2 license decision. The binding `LICENSE` is
+release-version-neutral and applies to the source distribution that includes it.
 
 ## Finalized policy
 
 The finalized model establishes the following terms:
 
 - Licensor: Eric T. Sawtelle; Copyright 2026 Eric T. Sawtelle.
-- Licensed Work: Cann-o-Call 0.1.0-rc.2.
+- Licensed Work: Cann-o-Call (the source distribution containing `LICENSE`).
 - Base license: Business Source License 1.1 (BSL 1.1).
 - The Additional Use Grant permits qualifying internal production use only when
   the user and its Affiliates have fewer than 50 FTE employees **and** less than

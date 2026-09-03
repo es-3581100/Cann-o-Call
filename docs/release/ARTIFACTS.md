@@ -3,7 +3,7 @@
 `build-reproducible.sh` / `package-rc.sh` are designed to emit an external release directory similar to:
 
 ```text
-Cann-o-Call-0.1.0-rc.1/
+Cann-o-Call-<version>/
   cann-o-call
   msl-ledger-sidecar
   BUILDINFO.json
@@ -12,8 +12,8 @@ Cann-o-Call-0.1.0-rc.1/
   LICENSING.md
   NOTICE
 
-Cann-o-Call-0.1.0-rc.1-linux-amd64.tar.gz
-Cann-o-Call-0.1.0-rc.1-source.tar.gz
+Cann-o-Call-<version>-linux-amd64.tar.gz
+Cann-o-Call-<version>-source.tar.gz
 SHA256SUMS
 ```
 

@@ -23,7 +23,7 @@ if [[ -f LICENSE && -f LICENSING.md && -f NOTICE ]]; then
   require_text LICENSE 'Business Source License 1.1'
   require_text LICENSE 'Copyright 2026 Eric T. Sawtelle'
   require_text LICENSE 'Licensor: Eric T. Sawtelle'
-  require_text LICENSE 'Licensed Work: Cann-o-Call 0.1.0-rc.2'
+  require_text LICENSE 'Licensed Work: Cann-o-Call (this source distribution)'
   require_text LICENSE 'Cann-o-Call Small-Business Production Use Grant'
   require_text LICENSE 'fewer than 50 full-time-equivalent'
   require_text LICENSE 'less than US $5,000,000 aggregate gross'

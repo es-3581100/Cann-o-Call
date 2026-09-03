@@ -71,9 +71,12 @@ is being finalized, community interaction is welcome:
 - Discussions
 - Documentation suggestions
 
-## Version-specific terms
+## Distribution-specific terms
 
-**Current version:** Cann-o-Call 0.1.0-rc.2
+The release identifier for this source distribution is recorded in `VERSION`
+and, for immutable releases, in its Git tag. The binding `LICENSE` applies to
+the source distribution that includes it; do not infer terms for another
+release from this summary.
 
 This version is under:
 - **Base license:** Business Source License 1.1
