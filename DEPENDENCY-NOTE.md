@@ -1,15 +1,15 @@
 # Dependency note
 
-This reconstructed source preserves the transcript's declared dependency:
+`go.mod` and `go.sum` are the authoritative Go dependency manifests for this
+repository. The direct runtime dependencies currently include Proto.Actor and
+`gopkg.in/yaml.v3`.
 
-```text
-gopkg.in/yaml.v3 v3.0.1
+For a fresh checkout, use the normal Go module workflow:
+
+```bash
+go mod download
+go mod tidy
 ```
 
-The reconstruction environment could not reach `proxy.golang.org`, so a separate
-`validation-worktree`/`worktree` uses a clearly marked JSON-only offline shim only
-to compile and exercise the Go implementation without changing this intended
+No vendored or reconstruction-only dependency shim is part of the canonical
 source tree.
-
-Before normal use, run `go mod tidy` in a network-enabled Go environment and
-remove any reconstruction-only shim if copied from the validation tree.

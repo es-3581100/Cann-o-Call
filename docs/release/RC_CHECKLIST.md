@@ -1,9 +1,15 @@
-# Cann-o-Call v0.1.0-rc.1 — RC Checklist
+# Cann-o-Call — RC Checklist
+
+> Active release checks are version-driven. Use `VERSION`,
+> `docs/release/TAGGING.md`, and the matching release notes as the release
+> identity; do not hard-code a developer checkout path or historical commit SHA
+> into this checklist.
 
 ## Source gate
 
-- [ ] canonical root is `/home/sticky-ricky/repos/cann-o-call`
-- [ ] HEAD is `544f066c4f5453419934347b04e1229c03582125` or an explicitly reviewed release-doc-only descendant
+- [ ] current checkout root is the intended repository
+- [ ] `VERSION`, intended tag, and matching release notes agree
+- [ ] `EXPECTED_HEAD` is set to the exact reviewed release commit
 - [ ] working tree is clean
 - [ ] `git fsck --no-dangling` passes
 - [ ] no unexpected generated artifacts exist in the repository
@@ -48,7 +54,7 @@
 - [ ] bounded native terminology used
 - [ ] accepted limitations disclosed
 - [ ] release notes present
-- [ ] canonical brand reference retained
+- [ ] repository hero and branding guidance agree
 - [ ] logo/image provenance retained
 
 ## Tag gate

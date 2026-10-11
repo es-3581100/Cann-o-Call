@@ -1,6 +1,11 @@
 # Cann-o-Call — Brand Identity Reference
 
-Status: Canonical visual/text reference derived from the approved brand source image.
+Status: Product/UI visual and text reference.
+Release-facing repository hero: `assets/brand/cann-o-call-brand-source.png`.
+The current README/release hero intentionally uses a light state-transmission
+composition and kinetic wordmark. The darker diamond/core language documented
+below remains valid for product UI, icons, and runtime-console surfaces; it is
+not a requirement for the repository hero.
 Purpose: Preserve a consistent visual identity across application UI, icons,
 documentation, repositories, marketing images, and generated supporting assets.
 

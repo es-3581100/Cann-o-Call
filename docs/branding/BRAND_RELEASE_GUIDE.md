@@ -1,6 +1,15 @@
 # Cann-o-Call — Release Branding Guide
 
-The canonical identity is a dark, retro-futuristic actor-runtime system centered on a luminous cyan geometric diamond/core.
+Cann-o-Call uses two coordinated visual modes:
+
+- **Repository/release hero:** the light state-transmission composition in
+  `assets/brand/cann-o-call-brand-source.png`, with cyan-to-coral endpoints,
+  explicit message/state movement, and a kinetic navy wordmark.
+- **Application/runtime UI:** the darker retro-futuristic control-plane language
+  documented in `BRAND_IDENTITY_REFERENCE.txt`.
+
+The two modes should describe the same system rather than force every surface
+into one visual treatment.
 
 ## Release-facing identity
 
@@ -31,9 +40,16 @@ Do not package font files. Consumers should obtain fonts from their normal licen
 
 ## Release media rules
 
-- Use the luminous diamond/core as the recurring identity anchor.
-- Prefer dark navy technical surfaces and cyan/blue state/message flows.
+- Use explicit sender → state/message → receiver structure in repository-facing
+  hero media.
+- Preserve the left-to-right sense of motion in the Cann-o-Call wordmark when
+  using the current hero treatment.
+- Keep cyan/blue as the runtime/message family and reserve coral/red for the
+  receiving/delivered endpoint or meaningful failure states.
+- For product UI, prefer dark navy technical surfaces and cyan/blue state/message
+  flows.
 - Show discrete actors and explicit state/event movement.
 - Reserve yellow/red for meaningful warning/failure states.
-- Avoid generic bright SaaS styling, glassmorphism, or abstract "AI assistant" imagery.
+- Avoid generic bright SaaS styling, glassmorphism, or abstract "AI assistant"
+  imagery.
 - Preserve the source brand image and text-reference hashes in release provenance.

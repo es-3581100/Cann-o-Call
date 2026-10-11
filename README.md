@@ -1,7 +1,7 @@
 # Cann-o-Call
 
 <p align="center">
-  <img src="assets/brand/cann-o-call-brand-source.png" alt="Cann-o-Call actor runtime mark" width="720">
+  <img src="assets/brand/cann-o-call-brand-source.png" alt="Cann-o-Call state-transmission runtime header" width="720">
 </p>
 
 > **Every call. Every actor. Every state. Connected.**
@@ -113,7 +113,6 @@ git checkout v0.1.0-rc.3
 Build the checked-out source distribution:
 
 ```bash
-
 # Build the Go runtime/CLI and the Rust durable sidecar.
 make build
 cargo build --locked --manifest-path sidecar/Cargo.toml
